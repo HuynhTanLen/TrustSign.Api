@@ -6,6 +6,11 @@ Dự án thay cho bản gateway + ba service (repo `TrustSign.Backend`) từ ng�
 
 Đây là bộ khung: mới có `GET /api/auth/me`, JWKS, health check và token thử ở Development. Các chức năng nghiệp vụ được làm theo bảng task trong kế hoạch khóa luận.
 
+## Tài liệu
+
+- [Kế hoạch thực hiện khóa luận](docs/KE-HOACH.md): task theo tuần, mốc, rủi ro, chuẩn bị bảo vệ.
+- [Prompt làm giao diện](docs/UI-PROMPT.md): prompt chung và prompt từng màn hình cho frontend Next.js.
+
 ## Cấu trúc
 
 ```
