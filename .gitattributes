@@ -1,0 +1,11 @@
+* text=auto
+
+*.cs      text diff=csharp
+*.sh      text eol=lf
+*.sql     text eol=lf
+
+*.pdf     binary
+*.docx    binary
+*.png     binary
+*.jpg     binary
+*.pfx     binary

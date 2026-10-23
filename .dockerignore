@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+.git/
+.github/
+.vs/
+.idea/
+.env
+keys/
+artifacts/
+tests/
+docker-compose.yml
+README.md

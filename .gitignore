@@ -1,0 +1,29 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+artifacts/
+*.trx
+coverage*/
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# Bí mật và cấu hình máy cá nhân: không bao giờ commit
+.env
+keys/
+*.pem
+*.pfx
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Công cụ
+.claude/
+
+# Hệ điều hành
+Thumbs.db
+.DS_Store

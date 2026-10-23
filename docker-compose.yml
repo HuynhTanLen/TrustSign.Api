@@ -1,0 +1,45 @@
+# Hạ tầng cho máy phát triển. Ứng dụng chạy bằng dotnet run, không chạy trong compose này.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: trustsign-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trustsign_db}
+      POSTGRES_USER: ${POSTGRES_USER:-trustsign}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustsign_dev}
+    ports:
+      # 5433 để không đụng PostgreSQL cài sẵn trên máy (5432).
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - trustsign-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Kho lưu file PDF tương thích S3. API: http://localhost:9000, console: http://localhost:9001
+  minio:
+    image: minio/minio:latest
+    container_name: trustsign-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-trustsign}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-trustsign_dev}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - trustsign-minio:/data
+
+  # Hộp thư giả để xem thư xác minh, lời mời, OTP: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: trustsign-mailpit-dev
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  trustsign-pg:
+  trustsign-minio:
