@@ -1,9 +1,12 @@
+using TrustSign.Common;
 using TrustSign.Common.Enums;
 
 namespace TrustSign.Domain.Entities.Identity;
 
 public sealed class User
 {
+    private const int MaxFailedAttempts = 5;
+    private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
     private User()
     {
     }
@@ -46,5 +49,37 @@ public sealed class User
         {
             Status = UserStatus.Active;
         }
+    }
+    public Result RecordFailedLogin(DateTimeOffset now)
+    {
+       if(LockedUntil != null && now >= LockedUntil)
+        {
+            FailedLoginCount = 0;
+            LockedUntil = null;
+        }
+       FailedLoginCount++;
+
+       if(FailedLoginCount >= MaxFailedAttempts && LockedUntil == null )
+        {
+            LockedUntil = now + LockDuration;
+        }
+
+       return Result.Success();
+    }
+
+    public Result CanLogin(DateTimeOffset now)
+    {
+        if(LockedUntil != null && now < LockedUntil)
+        {
+             return IdentityErrors.AccountLocked;
+        }
+        return Result.Success();
+    }
+    
+    public Result RecordSuccessfulLogin(DateTimeOffset now)
+    {
+        FailedLoginCount = 0;
+        LockedUntil = null;
+        return Result.Success();
     }
 }

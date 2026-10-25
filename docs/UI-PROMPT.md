@@ -4,7 +4,7 @@ Bộ prompt để dán vào công cụ AI làm giao diện (v0, Claude, Cursor�
 
 ## Cách dùng
 
-1. Mở phiên mới, dán **Prompt chung** một lần.
+1. Mở phiên mới, dán **Prompt chung** một lần. Nếu đã có code giao diện kiểu cũ, dán tiếp **Prompt đổi giao diện phần đã làm** trước khi làm màn hình mới.
 2. Dán từng **Prompt màn hình** theo thứ tự task (FE-01 → FE-10). Mỗi lần một màn hình; chạy `npm run dev`, bấm thử được rồi mới làm tiếp.
 3. Khi backend có endpoint thật, sửa đường dẫn trong `src/lib/api/<module>.ts` cho khớp (endpoint trong prompt chỉ là dự kiến theo SRS).
 4. Kết quả AI sinh ra phải được đọc lại trước khi commit: kiểm tra chữ tiếng Việt, phân quyền theo vai trò và không có dữ liệu giả lọt vào bản chính.
@@ -34,10 +34,24 @@ BỐ CỤC
 - Khu ứng dụng (cần đăng nhập): sidebar trái gồm ô chọn doanh nghiệp đang làm việc và menu Bảng điều khiển, Hợp đồng, Mẫu hợp đồng, Chữ ký của tôi, Gói và thanh toán, Thành viên; thanh trên có tên người dùng và menu (Hồ sơ, Đổi mật khẩu, Đăng xuất). Menu chỉ hiện mục người dùng có quyền. Quản trị nền tảng có khu /admin riêng.
 - Trên điện thoại (bề ngang 375px) sidebar thu thành nút menu; bảng chuyển thành danh sách thẻ.
 
-PHONG CÁCH
-- Cảm giác tin cậy, gọn, nhiều khoảng trắng, không hoa mỹ. Màu chính xanh navy, màu nhấn xanh ngọc cho nút hành động chính; đỏ chỉ cho lỗi và thao tác nguy hiểm.
-- Font Geist đã cấu hình (có tiếng Việt). Giữ chế độ sáng/tối theo hệ thống như globals.css hiện có.
-- Badge trạng thái hợp đồng, màu cố định: Nháp (xám), Chờ ký (vàng), Đang ký (xanh dương), Hoàn tất (xanh lá), Từ chối (đỏ), Đã hủy (xám đậm), Hết hạn (cam).
+PHONG CÁCH (giống phần mềm quản lý văn phòng thông thường, không giống trang mẫu do AI sinh)
+- Font hệ thống, không tải font ngoài, không dùng next/font: font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif (đều có tiếng Việt). Chữ nội dung 14px, tiêu đề trang 20px, tiêu đề khối 16px, đậm tối đa 600. Không dùng chữ 800–900, không chữ dưới 12px, không tracking-tight.
+- Bảng màu cố định, khai báo một lần trong @theme của globals.css và chỉ dùng các biến này; không dùng thẳng màu Tailwind (cyan, teal, indigo, violet, purple, slate-950…):
+  --color-primary: #1f5fa8 (nút chính, link, mục menu đang chọn); --color-primary-hover: #194d89
+  --color-fg: #1f2328 (chữ chính); --color-muted: #5f6b7a (chữ phụ)
+  --color-line: #d0d7de (viền); --color-page: #f5f6f8 (nền trang); --color-surface: #ffffff (thẻ, bảng, form)
+  --color-selected: #e8f0fa (nền mục đang chọn, hàng đang chọn)
+  --color-danger: #c62828; --color-success: #2e7d32; --color-warning: #b26a00
+- Chỉ chế độ sáng, không viết class dark:.
+- Hình khối: bo góc 4px cho nút, ô nhập, thẻ, bảng; 6px cho hộp thoại; rounded-full chỉ cho avatar. Tách khối bằng viền 1px màu --color-line, không đổ bóng; chỉ hộp thoại và menu thả xuống có bóng nhẹ.
+- Nút cao 36px, một màu đặc, chữ thường. Nút chính nền --color-primary chữ trắng; nút phụ nền trắng viền --color-line; nút nguy hiểm nền --color-danger.
+- KHÔNG dùng: gradient (kể cả logo, chữ, nền), backdrop-blur / kính mờ, phát sáng, chữ chuyển màu, nhãn viên thuốc kiểu "Mới", emoji, icon trang trí trước mọi tiêu đề, nền chấm hoặc lưới, hoạt ảnh khi cuộn, thẻ nhấc lên khi rê chuột.
+- Icon lucide chỉ dùng khi có chức năng (menu sidebar, nút hành động, trạng thái), cỡ 16px, cùng màu chữ.
+- Logo là chữ "Chữ Tín" màu --color-primary, đậm 600; không ô vuông chứa chữ cái, không gradient.
+- Mật độ như phần mềm quản lý: bảng có kẻ dòng, hàng cao 40px, đầu bảng nền --color-page chữ 13px đậm 600; form xếp nhãn ở trên ô nhập; nội dung rộng tối đa 1200px; sidebar nền trắng có viền phải, mục đang chọn nền --color-selected chữ --color-primary.
+- Trang chủ đơn giản: thanh trên, tên sản phẩm + một câu mô tả, nút Đăng ký và Đăng nhập, ba chức năng chính dạng tiêu đề + một dòng mô tả, chân trang. Không hero khổng lồ, không số liệu ảo, không lời chứng thực khách hàng giả.
+- Câu chữ ngắn, rõ, giọng hành chính; không dùng từ quảng cáo ("thế hệ mới", "đột phá", "vượt trội"), không dấu chấm than.
+- Badge: nền nhạt, chữ đậm cùng tông, bo 3px, chữ 12px. Trạng thái hợp đồng, màu cố định: Nháp (xám), Chờ ký (vàng), Đang ký (xanh dương), Hoàn tất (xanh lá), Từ chối (đỏ), Đã hủy (xám đậm), Hết hạn (cam).
 - Badge thuê bao: Dùng thử (xanh dương), Hiệu lực (xanh lá), Hết hạn (đỏ).
 
 QUY ƯỚC
@@ -64,6 +78,22 @@ BẢN ĐỒ ROUTE
 | /admin, /admin/plans, /admin/tenants, /admin/users, /admin/certificates | Quản trị nền tảng | Quản trị nền tảng |
 
 Chờ tôi gửi yêu cầu từng màn hình. Mỗi lần chỉ làm đúng màn hình được yêu cầu cùng các component nó cần.
+```
+
+## Prompt đổi giao diện phần đã làm
+
+Dán sau Prompt chung khi code đã sinh trước đó vẫn theo kiểu cũ (gradient, xanh ngọc, bo tròn lớn, font Geist).
+
+```text
+Giao diện hiện tại trông như trang mẫu do AI sinh. Áp lại mục PHONG CÁCH ở trên cho toàn bộ code đang có. Không đổi chức năng, API, route hay câu chữ nghiệp vụ.
+
+1. src/app/layout.tsx: bỏ next/font (Geist, Geist_Mono) và các biến font; body dùng font hệ thống, nền --color-page, chữ --color-fg.
+2. src/app/globals.css: khai báo các biến màu trong @theme để dùng được bg-primary, text-muted, border-line, bg-page, bg-surface…; xóa khối prefers-color-scheme dark và --font-geist-*.
+3. src/components/ui/: viết lại Button, Input, Badge, Skeleton, Toast, EmptyState theo quy tắc mới (bo 4px, không bóng, nút cao 36px, không focus ring màu cyan mà dùng viền --color-primary).
+4. Các trang đã có (/, (auth)/*, /onboarding, layout và trang /app, gateway-status): thay màu cứng bằng biến; bỏ gradient, backdrop-blur, rounded-xl/2xl, shadow-sm/md, nhãn viên thuốc, chữ chuyển màu, ô logo chữ "T"; viết lại trang chủ đúng mô tả trong PHONG CÁCH.
+5. Kiểm tra: tìm trong src/ các chuỗi gradient, backdrop-blur, rounded-xl, rounded-2xl, cyan-, teal-, indigo-, violet-, slate-, dark:, font-extrabold, font-bold, text-[11px], text-[10px], Geist. Kết quả phải rỗng (rounded-full cho avatar được giữ). Chạy npm run build không lỗi.
+
+Cuối cùng liệt kê các file đã sửa.
 ```
 
 ## Prompt màn hình
