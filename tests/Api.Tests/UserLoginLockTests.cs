@@ -109,13 +109,26 @@ public sealed class UserLoginLockTests
     }
 
     [Fact]
-    public void TestName()
+    public void CanLogin_WhenEmailNotVerified_IsRejected()
     {
-        // Given
-    
-        // When
-    
-        // Then
+        User user = User.Register("a@b.com","A","Hash",T0);
+
+        Result result = user.CanLogin(T0);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(IdentityErrors.EmailNotVerified, result.Error);
+    }
+
+    [Fact]
+    public void RecordFailedLogin_WhenEmailNotVerified_IsRejectedAndDoesNotCount()
+    {
+        User user = User.Register("a@b.com", "A", "Hash", T0);
+
+        Result result = user.RecordFailedLogin(T0);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(IdentityErrors.EmailNotVerified, result.Error);
+        Assert.Equal(0, user.FailedLoginCount);
     }
 
 }

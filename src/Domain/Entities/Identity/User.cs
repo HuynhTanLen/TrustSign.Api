@@ -52,6 +52,10 @@ public sealed class User
     }
     public Result RecordFailedLogin(DateTimeOffset now)
     {
+       if(Status == UserStatus.Pending)
+        {
+            return IdentityErrors.EmailNotVerified;
+        }
        if(LockedUntil != null && now >= LockedUntil)
         {
             FailedLoginCount = 0;
@@ -69,6 +73,10 @@ public sealed class User
 
     public Result CanLogin(DateTimeOffset now)
     {
+        if(Status == UserStatus.Pending)
+        {
+            return IdentityErrors.EmailNotVerified;
+        }
         if(LockedUntil != null && now < LockedUntil)
         {
              return IdentityErrors.AccountLocked;

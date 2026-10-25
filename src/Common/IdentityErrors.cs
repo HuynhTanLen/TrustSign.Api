@@ -7,4 +7,6 @@ public static class IdentityErrors
         Error.Unauthorized("Auth.SessionInvalid", "Phiên đăng nhập không còn hiệu lực.");
     public static readonly Error AccountLocked =
     Error.TooManyRequests("Auth.AccountLocked", "Tài khoản bị khóa tạm thời do đăng nhập sai nhiều lần.");
+    public static readonly Error EmailNotVerified =
+    Error.Forbidden("Auth.EmailNotVerified", "Vui lòng xác minh email trước khi đăng nhập.");
 }
