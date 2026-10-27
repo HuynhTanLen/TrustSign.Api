@@ -8,5 +8,14 @@ namespace TrustSign.Application.Modules.Notifications;
 /// </summary>
 public static class NotificationsModule
 {
-    public static IServiceCollection AddNotificationsModule(this IServiceCollection services) => services;
+    public static IServiceCollection AddNotificationsModule(this IServiceCollection services)
+    {
+        services.AddOptions<SmtpOptions>()
+            .BindConfiguration(SmtpOptions.SectionName)
+            .ValidateDataAnnotations();
+
+        services.AddScoped<IEmailSender, SmtpEmailSender>();
+
+        return services;
+    }
 }

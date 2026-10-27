@@ -14,9 +14,14 @@ public static class IdentityModule
             .BindConfiguration(JwtOptions.SectionName)
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.AddOptions<AdminSeedOptions>().BindConfiguration(AdminSeedOptions.SectionName);
 
+        services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddSingleton<IAccessTokenIssuer, RsaAccessTokenIssuer>();
+        services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddScoped<ITenantService, TenantService>();
+        services.AddScoped<IAdminSeeder, AdminSeeder>();
 
         return services;
     }

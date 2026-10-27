@@ -14,21 +14,30 @@ public sealed class RsaAccessTokenIssuer(SigningKeyRing keyRing, IOptions<JwtOpt
     private readonly JsonWebTokenHandler _handler = new();
     private readonly JwtOptions _options = options.Value;
 
-    public AccessTokenDto Issue(Guid userId, Guid sessionId, UserRole role)
+    public AccessTokenDto Issue(Guid userId, Guid sessionId, UserRole role, TenantClaimContext? tenant = null)
     {
         DateTimeOffset now = timeProvider.GetUtcNow();
         DateTimeOffset expiresAt = now.AddMinutes(_options.AccessTokenMinutes);
+
+        List<Claim> claims =
+        [
+            new Claim(JwtClaims.Subject, userId.ToString("D")),
+            new Claim(JwtClaims.Session, sessionId.ToString("D")),
+            new Claim(JwtClaims.Role, role.ToString())
+        ];
+
+        if (tenant is not null)
+        {
+            claims.Add(new Claim(JwtClaims.TenantId, tenant.TenantId.ToString("D")));
+            claims.Add(new Claim(JwtClaims.TenantRole, tenant.Role.ToString()));
+            claims.Add(new Claim(JwtClaims.TenantStatus, tenant.Status.ToString()));
+        }
 
         string token = _handler.CreateToken(new SecurityTokenDescriptor
         {
             Issuer = _options.Issuer,
             Audience = _options.Audience,
-            Subject = new ClaimsIdentity(
-            [
-                new Claim(JwtClaims.Subject, userId.ToString("D")),
-                new Claim(JwtClaims.Session, sessionId.ToString("D")),
-                new Claim(JwtClaims.Role, role.ToString())
-            ]),
+            Subject = new ClaimsIdentity(claims),
             IssuedAt = now.UtcDateTime,
             NotBefore = now.UtcDateTime,
             Expires = expiresAt.UtcDateTime,

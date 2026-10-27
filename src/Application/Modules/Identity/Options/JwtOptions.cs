@@ -16,6 +16,14 @@ public sealed class JwtOptions
     [Range(1, 60)]
     public int AccessTokenMinutes { get; init; } = 15;
 
+    /// <summary>Tuổi thọ refresh token (ngày).</summary>
+    [Range(1, 90)]
+    public int RefreshTokenDays { get; init; } = 7;
+
+    /// <summary>Tuổi thọ liên kết xác minh email (giờ).</summary>
+    [Range(1, 168)]
+    public int VerificationTokenHours { get; init; } = 24;
+
     /// <summary>Đường dẫn file PEM chứa private key RSA. File này nằm ngoài mã nguồn (NFR03).</summary>
     [Required]
     public string PrivateKeyPath { get; init; } = null!;

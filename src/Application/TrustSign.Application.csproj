@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
@@ -8,6 +9,10 @@
 
   <ItemGroup>
     <ProjectReference Include="../Domain/TrustSign.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TrustSign.Api.Tests" />
   </ItemGroup>
 
 </Project>
