@@ -41,6 +41,18 @@ public sealed class User
         CreatedAt = now
     };
 
+    /// <summary>Quản trị nền tảng do hệ thống tạo sẵn nên không cần xác minh email.</summary>
+    public static User CreateAdmin(string email, string fullName, string passwordHash, DateTimeOffset now) => new()
+    {
+        Id = Guid.CreateVersion7(now),
+        Email = NormalizeEmail(email),
+        FullName = fullName.Trim(),
+        PasswordHash = passwordHash,
+        Role = UserRole.Admin,
+        Status = UserStatus.Active,
+        CreatedAt = now
+    };
+
     public static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 
     public void MarkEmailVerified()
@@ -73,21 +85,38 @@ public sealed class User
 
     public Result CanLogin(DateTimeOffset now)
     {
-        if(Status == UserStatus.Pending)
+        if (Status == UserStatus.Pending)
         {
             return IdentityErrors.EmailNotVerified;
         }
-        if(LockedUntil != null && now < LockedUntil)
+        if (Status == UserStatus.Locked)
         {
-             return IdentityErrors.AccountLocked;
+            return IdentityErrors.AccountDisabled;
+        }
+        if (LockedUntil != null && now < LockedUntil)
+        {
+            return IdentityErrors.AccountLocked;
         }
         return Result.Success();
     }
-    
+
     public Result RecordSuccessfulLogin(DateTimeOffset now)
     {
+        _ = now;
         FailedLoginCount = 0;
         LockedUntil = null;
+        return Result.Success();
+    }
+
+    public Result UpdateProfile(string fullName)
+    {
+        string trimmed = fullName.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.Length > 100)
+        {
+            return IdentityErrors.InvalidFullName;
+        }
+
+        FullName = trimmed;
         return Result.Success();
     }
 }

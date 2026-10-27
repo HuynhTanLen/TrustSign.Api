@@ -15,6 +15,9 @@ public static class DomainRepositoriesServiceCollectionExtensions
 
         // Identity
         services.AddScoped<IUserRepository, EfUserRepository>();
+        services.AddScoped<IEmailVerificationTokenRepository, EfEmailVerificationTokenRepository>();
+        services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
+        services.AddScoped<ITenantRepository, EfTenantRepository>();
 
         return services;
     }
