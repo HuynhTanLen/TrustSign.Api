@@ -39,6 +39,27 @@ public sealed class RsaAccessTokenIssuerTests
     }
 
     [Fact]
+    public async Task Token_includes_tenant_claims_when_tenant_context_is_provided()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid sessionId = Guid.NewGuid();
+        Guid tenantId = Guid.NewGuid();
+
+        AccessTokenDto token = _issuer.Issue(
+            userId,
+            sessionId,
+            UserRole.User,
+            new TenantClaimContext(tenantId, TenantRole.TenantOwner, TenantStatus.Active));
+
+        TokenValidationResult result = await ValidateWithPublishedJwksAsync(token.AccessToken, Audience);
+
+        Assert.True(result.IsValid, result.Exception?.Message);
+        Assert.Equal(tenantId.ToString("D"), result.Claims[JwtClaims.TenantId]);
+        Assert.Equal("TenantOwner", result.Claims[JwtClaims.TenantRole]);
+        Assert.Equal("Active", result.Claims[JwtClaims.TenantStatus]);
+    }
+
+    [Fact]
     public async Task Token_is_rejected_for_another_audience()
     {
         AccessTokenDto token = _issuer.Issue(Guid.NewGuid(), Guid.NewGuid(), UserRole.User);

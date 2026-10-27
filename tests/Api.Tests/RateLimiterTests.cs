@@ -35,6 +35,21 @@ public sealed class RateLimiterTests
     }
 
     [Fact]
+    public void Auth_login_and_register_requests_over_10_per_minute_are_rejected()
+    {
+        HttpContext loginCaller = Request(HttpMethods.Post, userId: null, path: "/api/auth/login");
+
+        for (int i = 0; i < RateLimitingServiceCollectionExtensions.AuthPermitsPerMinute; i++)
+        {
+            Assert.True(_limiter.AttemptAcquire(loginCaller).IsAcquired, $"Lần thử thứ {i + 1} phải được phục vụ.");
+        }
+
+        // Lần thứ 11 trong một phút vào /api/auth/login hoặc /api/auth/register cùng IP bị chặn (GW-01, NFR04).
+        Assert.False(_limiter.AttemptAcquire(loginCaller).IsAcquired);
+        Assert.False(_limiter.AttemptAcquire(Request(HttpMethods.Post, userId: null, path: "/api/auth/register")).IsAcquired);
+    }
+
+    [Fact]
     public void One_caller_hitting_the_limit_does_not_block_another()
     {
         HttpContext noisy = Request(HttpMethods.Post, userId: "user-a");
