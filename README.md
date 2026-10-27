@@ -77,12 +77,22 @@ Lệnh thứ hai trả 200, lệnh cuối không có token nên trả 401.
 
 | Phương thức | Đường dẫn | Ghi chú |
 | --- | --- | --- |
-| GET | `/api/auth/me` | Cần Bearer token |
+| POST | `/api/auth/register` | Đăng ký tài khoản, băm mật khẩu PBKDF2-SHA256, gửi mail xác minh (10 lần/phút/IP) |
+| POST | `/api/auth/verify-email` | Xác minh email bằng token dùng 1 lần |
+| POST | `/api/auth/resend-verification` | Gửi lại email xác minh |
+| POST | `/api/auth/login` | Đăng nhập, cấp JWT RS256 + cookie HttpOnly `trustsign_rt` (10 lần/phút/IP) |
+| POST | `/api/auth/refresh` | Xoay vòng refresh token, phát hiện dùng lại token cũ (TC11) |
+| POST | `/api/auth/logout` | Thu hồi phiên và xóa cookie refresh token |
+| GET / PATCH | `/api/auth/me` | Xem / cập nhật hồ sơ người dùng hiện tại |
+| POST / GET | `/api/tenants`, `/api/tenants/mine` | Tạo doanh nghiệp mới (Chủ DN), danh sách doanh nghiệp của tôi |
+| POST | `/api/tenants/{tenantId}/switch` | Đổi doanh nghiệp đang làm việc và nhận JWT mới |
+| GET / PATCH / DELETE | `/api/tenants/current/members/{memberUserId}` | Quản lý thành viên doanh nghiệp |
+| POST / GET / DELETE | `/api/tenants/current/invitations/{invitationId}` | Mời thành viên qua email, xem / thu hồi lời mời (chỉ Chủ DN) |
+| POST | `/api/invitations/{token}/accept` | Chấp nhận lời mời tham gia doanh nghiệp |
 | GET | `/.well-known/jwks.json` | Public key ký JWT, để bên ngoài tự kiểm token |
 | GET | `/health/live`, `/health/ready` | Ready kiểm tra kết nối database |
-| POST | `/api/auth/dev-token` | Chỉ có ở Development: cấp token cho tài khoản thử. Xóa `src/Api/Development/` khi đăng nhập đã xong |
 
-Mọi request trừ `/health` bị giới hạn 300 lần đọc và 30 lần ghi mỗi phút cho mỗi người dùng (hoặc IP nếu chưa đăng nhập); vượt thì trả 429.
+Endpoint `/api/auth/login` và `/api/auth/register` bị giới hạn 10 lần/phút theo IP; mọi request khác trừ `/health` bị giới hạn 300 lần đọc và 30 lần ghi mỗi phút cho mỗi người dùng (hoặc IP); vượt thì trả 429.
 
 ## Lệnh thường dùng
 

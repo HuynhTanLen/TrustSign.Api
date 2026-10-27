@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
-using TrustSign.Api.Development;
 using TrustSign.Api.Errors;
 using TrustSign.Api.Observability;
 using TrustSign.Api.Security;
 using TrustSign.Application.DependencyInjection;
+using TrustSign.Application.Modules.Identity;
 using TrustSign.Domain.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -46,9 +46,8 @@ if (app.Environment.IsDevelopment())
     await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
     {
         await scope.ServiceProvider.GetRequiredService<TrustSignDbContext>().Database.MigrateAsync();
+        await scope.ServiceProvider.GetRequiredService<IAdminSeeder>().SeedAsync(CancellationToken.None);
     }
-
-    app.MapDevEndpoints();
 }
 
 app.Run();

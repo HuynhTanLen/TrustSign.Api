@@ -27,7 +27,7 @@ public static class JwtBearerServiceCollectionExtensions
                 options.TokenValidationParameters = CreateValidationParameters(jwt.Value.Issuer, jwt.Value.Audience);
                 options.TokenValidationParameters.IssuerSigningKeys = keyRing.PublicKeys;
             });
-        services.AddAuthorization();
+        services.AddTrustSignAuthorization();
 
         return services;
     }
