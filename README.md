@@ -9,7 +9,7 @@ Dự án thay cho bản gateway + ba service (repo `TrustSign.Backend`) từ ng�
 ## Tài liệu
 
 - [Kế hoạch thực hiện khóa luận](docs/KE-HOACH.md): task theo tuần, mốc, rủi ro, chuẩn bị bảo vệ.
-- [Prompt làm giao diện](docs/UI-PROMPT.md): prompt chung và prompt từng màn hình cho frontend Next.js.
+
 
 ## Cấu trúc
 
