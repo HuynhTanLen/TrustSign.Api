@@ -4,7 +4,7 @@ Backend của hệ thống cho thuê dịch vụ quản lý hợp đồng điệ
 
 Dự án thay cho bản gateway + ba service (repo `TrustSign.Backend`) từ ngày 23/10/2026. Bản cũ chỉ còn để lưu trữ.
 
-Đây là bộ khung: mới có `GET /api/auth/me`, JWKS, health check và token thử ở Development. Các chức năng nghiệp vụ được làm theo bảng task trong kế hoạch khóa luận.
+Hiện tại hệ thống đã hoàn thành Mốc M1: đăng ký/xác minh email, đăng nhập RS256 + xoay vòng refresh token, quản lý doanh nghiệp đa khách thuê và thành viên, tài khoản quản trị nền tảng (`AdminSeed`) và kiểm chứng ký số PAdES hai cấp CA (`SIG-01`).
 
 ## Cấu trúc
 
@@ -54,19 +54,24 @@ docker compose up -d
 dotnet run --project src/Api
 ```
 
-Ứng dụng nghe ở http://localhost:5050. Lần chạy đầu ở môi trường Development nó tự áp migration và tự sinh khóa ký JWT vào `keys/signing-key.pem` (thư mục `keys/` không được commit).
+Ứng dụng nghe ở http://localhost:5050. Lần chạy đầu ở môi trường Development nó tự áp migration, tự tạo tài khoản quản trị nền tảng từ cấu hình `AdminSeed` và tự sinh khóa ký JWT vào `keys/signing-key.pem` (thư mục `keys/` không được commit).
 
 Trên database mới, log có một dòng `fail` về bảng `__EFMigrationsHistory` chưa tồn tại. Đó là EF Core dò lịch sử migration trước khi tạo bảng, không phải lỗi.
 
-Thử nhanh:
+Thử nhanh đăng nhập và đọc hồ sơ `/api/auth/me`:
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:5050/api/auth/dev-token | sed 's/.*"accessToken":"\([^"]*\)".*/\1/')
+TOKEN=$(curl -s -X POST http://localhost:5050/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@trustsign.local","password":"Admin@12345"}' \
+  | sed 's/.*"accessToken":"\([^"]*\)".*/\1/')
 curl -H "Authorization: Bearer $TOKEN" http://localhost:5050/api/auth/me
 curl -i http://localhost:5050/api/auth/me
 ```
 
 Lệnh thứ hai trả 200, lệnh cuối không có token nên trả 401.
+
+Khi chạy `dotnet test TrustSign.slnx`, bài kiểm thử `PadesSpikeTests` (`SIG-01`, `TC03`) tự động xuất chứng thư gốc `trustsign-root-ca.cer`, file hợp đồng ký 2 lần hợp lệ `hop-dong-mau-2-chu-ky.pdf` và file bị sửa 1 byte `hop-dong-bi-sua-1-byte.pdf` ra thư mục `artifacts/pades-spike/` để mở kiểm chứng trên Adobe Acrobat Reader hoặc Foxit PDF Reader.
 
 ## Endpoint
 
