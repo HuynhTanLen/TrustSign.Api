@@ -335,6 +335,266 @@ namespace TrustSign.Domain.Migrations
                     b.ToTable("users", "identity");
                 });
 
+            modelBuilder.Entity("TrustSign.Domain.Entities.Subscriptions.Invoice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("BankReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("bank_reference");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset?>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<int>("PlanDurationDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("plan_duration_days");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("plan_id");
+
+                    b.Property<string>("PlanName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("plan_name");
+
+                    b.Property<long?>("SepayTransactionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sepay_transaction_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_invoices");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_invoices_code");
+
+                    b.HasIndex("PlanId")
+                        .HasDatabaseName("ix_invoices_plan_id");
+
+                    b.HasIndex("SepayTransactionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_invoices_sepay_transaction_id");
+
+                    b.HasIndex("TenantId", "CreatedAt")
+                        .HasDatabaseName("ix_invoices_tenant_id_created_at");
+
+                    b.ToTable("invoices", "subscription");
+                });
+
+            modelBuilder.Entity("TrustSign.Domain.Entities.Subscriptions.PaymentTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("account_number");
+
+                    b.Property<string>("Content")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("content");
+
+                    b.Property<string>("Gateway")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("gateway");
+
+                    b.Property<string>("InvoiceCode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("invoice_code");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("outcome");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<string>("ReferenceCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("reference_code");
+
+                    b.Property<long>("SepayTransactionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sepay_transaction_id");
+
+                    b.Property<string>("TransactionDate")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("transaction_date");
+
+                    b.Property<decimal>("TransferAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("transfer_amount");
+
+                    b.Property<string>("TransferType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("transfer_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_payment_transactions");
+
+                    b.HasIndex("SepayTransactionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payment_transactions_sepay_transaction_id");
+
+                    b.ToTable("payment_transactions", "subscription");
+                });
+
+            modelBuilder.Entity("TrustSign.Domain.Entities.Subscriptions.Plan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DurationDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_days");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsTrial")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_trial");
+
+                    b.Property<int>("MonthlyQuota")
+                        .HasColumnType("integer")
+                        .HasColumnName("monthly_quota");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("price");
+
+                    b.HasKey("Id")
+                        .HasName("pk_plans");
+
+                    b.ToTable("plans", "subscription");
+                });
+
+            modelBuilder.Entity("TrustSign.Domain.Entities.Subscriptions.Subscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("plan_id");
+
+                    b.Property<int>("QuotaLimit")
+                        .HasColumnType("integer")
+                        .HasColumnName("quota_limit");
+
+                    b.Property<DateTimeOffset>("QuotaPeriodStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("quota_period_start");
+
+                    b.Property<int>("QuotaUsed")
+                        .HasColumnType("integer")
+                        .HasColumnName("quota_used");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_subscriptions");
+
+                    b.HasIndex("PlanId")
+                        .HasDatabaseName("ix_subscriptions_plan_id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_subscriptions_tenant_id");
+
+                    b.HasIndex("Status", "ExpiresAt")
+                        .HasDatabaseName("ix_subscriptions_status_expires_at");
+
+                    b.ToTable("subscriptions", "subscription");
+                });
+
             modelBuilder.Entity("TrustSign.Domain.Entities.Identity.EmailVerificationToken", b =>
                 {
                     b.HasOne("TrustSign.Domain.Entities.Identity.User", null)
@@ -397,6 +657,26 @@ namespace TrustSign.Domain.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_tenant_invitations_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("TrustSign.Domain.Entities.Subscriptions.Invoice", b =>
+                {
+                    b.HasOne("TrustSign.Domain.Entities.Subscriptions.Plan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_invoices_plans_plan_id");
+                });
+
+            modelBuilder.Entity("TrustSign.Domain.Entities.Subscriptions.Subscription", b =>
+                {
+                    b.HasOne("TrustSign.Domain.Entities.Subscriptions.Plan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_subscriptions_plans_plan_id");
                 });
 #pragma warning restore 612, 618
         }

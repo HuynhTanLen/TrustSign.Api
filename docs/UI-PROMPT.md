@@ -37,19 +37,26 @@ BỐ CỤC
 PHONG CÁCH (giống phần mềm quản lý văn phòng thông thường, không giống trang mẫu do AI sinh)
 - Font hệ thống, không tải font ngoài, không dùng next/font: font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif (đều có tiếng Việt). Chữ nội dung 14px, tiêu đề trang 20px, tiêu đề khối 16px, đậm tối đa 600. Không dùng chữ 800–900, không chữ dưới 12px, không tracking-tight.
 - Bảng màu cố định, khai báo một lần trong @theme của globals.css và chỉ dùng các biến này; không dùng thẳng màu Tailwind (cyan, teal, indigo, violet, purple, slate-950…):
-  --color-primary: #1f5fa8 (nút chính, link, mục menu đang chọn); --color-primary-hover: #194d89
+  --color-primary: #1b3a5c (xanh navy: nút chính, link, mục menu đang chọn); --color-primary-hover: #142c46. Link luôn gạch chân vì navy gần màu chữ chính.
   --color-fg: #1f2328 (chữ chính); --color-muted: #5f6b7a (chữ phụ)
   --color-line: #d0d7de (viền); --color-page: #f5f6f8 (nền trang); --color-surface: #ffffff (thẻ, bảng, form)
-  --color-selected: #e8f0fa (nền mục đang chọn, hàng đang chọn)
+  --color-selected: #e1e9f3 (nền mục đang chọn, hàng đang chọn)
+  Badge "Đang ký" / "Dùng thử" giữ xanh dương riêng: nền #e8f0fa, chữ #1f5fa8 (không dùng màu navy của nút chính).
   --color-danger: #c62828; --color-success: #2e7d32; --color-warning: #b26a00
+  --color-seal: #b3261e (đỏ son, chỉ dùng cho con dấu của logo; không dùng cho nút, link, trạng thái)
+  --color-topbar-muted: #c3cedb (chữ phụ trên thanh navy); --color-topbar-hover: #24496f (nền khi rê chuột trên thanh navy)
+  --color-strip: #eef1f5 (dải tiêu đề của thẻ và hộp thoại)
 - Chỉ chế độ sáng, không viết class dark:.
-- Hình khối: bo góc 4px cho nút, ô nhập, thẻ, bảng; 6px cho hộp thoại; rounded-full chỉ cho avatar. Tách khối bằng viền 1px màu --color-line, không đổ bóng; chỉ hộp thoại và menu thả xuống có bóng nhẹ.
+- Thanh trên của mọi trang là dải navy (--color-primary) chạy hết chiều ngang, chữ trắng; nút chính trên thanh dùng kiểu "inverse" (nền trắng, chữ navy).
+- Hình khối: bo góc 4px cho nút, ô nhập, thẻ, bảng; 6px cho hộp thoại; rounded-full chỉ cho avatar. Mỗi khối nội dung là một thẻ (Card) viền 1px --color-line, có dải tiêu đề cao 44px nền --color-strip, icon 16px màu primary cạnh tiêu đề. Thẻ số liệu có vạch màu 3px ở cạnh trên theo trạng thái. Không đổ bóng; chỉ hộp thoại, menu thả xuống và toast có bóng nhẹ.
 - Nút cao 36px, một màu đặc, chữ thường. Nút chính nền --color-primary chữ trắng; nút phụ nền trắng viền --color-line; nút nguy hiểm nền --color-danger.
-- KHÔNG dùng: gradient (kể cả logo, chữ, nền), backdrop-blur / kính mờ, phát sáng, chữ chuyển màu, nhãn viên thuốc kiểu "Mới", emoji, icon trang trí trước mọi tiêu đề, nền chấm hoặc lưới, hoạt ảnh khi cuộn, thẻ nhấc lên khi rê chuột.
-- Icon lucide chỉ dùng khi có chức năng (menu sidebar, nút hành động, trạng thái), cỡ 16px, cùng màu chữ.
-- Logo là chữ "Chữ Tín" màu --color-primary, đậm 600; không ô vuông chứa chữ cái, không gradient.
-- Mật độ như phần mềm quản lý: bảng có kẻ dòng, hàng cao 40px, đầu bảng nền --color-page chữ 13px đậm 600; form xếp nhãn ở trên ô nhập; nội dung rộng tối đa 1200px; sidebar nền trắng có viền phải, mục đang chọn nền --color-selected chữ --color-primary.
-- Trang chủ đơn giản: thanh trên, tên sản phẩm + một câu mô tả, nút Đăng ký và Đăng nhập, ba chức năng chính dạng tiêu đề + một dòng mô tả, chân trang. Không hero khổng lồ, không số liệu ảo, không lời chứng thực khách hàng giả.
+- Chuyển động nhẹ, có mục đích, 140–220ms, luôn bọc motion-safe (tắt khi người dùng bật giảm chuyển động): màu đổi mượt khi rê chuột; nội dung trang hiện dần khi chuyển trang; menu thả xuống, hộp thoại, toast hiện bằng fade/trượt ngắn; gạch chân tab trượt theo tab đang chọn; thanh tiến độ chạy từ trái một lần; nút nhấn xuống 1px.
+- KHÔNG dùng: gradient (kể cả logo, chữ, nền), backdrop-blur / kính mờ, phát sáng, chữ chuyển màu, nhãn viên thuốc kiểu "Mới", emoji, icon trang trí trong ô màu, nền chấm hoặc lưới, parallax, khối màu trôi nổi, hiệu ứng hiện khi cuộn, thẻ nhấc lên hoặc phóng to khi rê chuột.
+- Icon lucide chỉ dùng khi có chức năng (menu sidebar, nút hành động, trạng thái, tiêu đề thẻ), cỡ 16px, cùng màu chữ.
+- Logo là ô vuông đỏ son 14px (con dấu, không có chữ bên trong) và chữ "Chữ Tín" đậm 600; trên nền trắng chữ màu primary, trên thanh navy chữ trắng và con dấu có viền trắng 1px. Không gradient.
+- Mật độ như phần mềm quản lý: bảng có kẻ dòng, hàng cao 40px, đầu bảng nền --color-page chữ 13px đậm 600; form xếp nhãn ở trên ô nhập; nội dung rộng tối đa 1200px; sidebar nền trắng có viền phải, mục đang chọn nền --color-selected chữ --color-primary và vạch navy 3px bên trái.
+- Trang chủ: thanh trên navy; phần đầu gồm tiêu đề, một đoạn mô tả, ba ý chính có dấu tích, nút "Dùng thử miễn phí" và "Xem bảng giá", bên phải là hình minh họa danh sách hợp đồng dựng bằng chính component; quy trình 4 bước; 6 chức năng chính; câu hỏi thường gặp; dải navy mời dùng thử; chân trang nhiều cột. Không số liệu ảo, không lời chứng thực khách hàng giả, không logo khách hàng.
+- Trang đăng nhập/đăng ký chia đôi: bên trái khối navy có logo, một tiêu đề, ba ý chính; bên phải là form. Trên điện thoại chỉ hiện logo và form.
 - Câu chữ ngắn, rõ, giọng hành chính; không dùng từ quảng cáo ("thế hệ mới", "đột phá", "vượt trội"), không dấu chấm than.
 - Badge: nền nhạt, chữ đậm cùng tông, bo 3px, chữ 12px. Trạng thái hợp đồng, màu cố định: Nháp (xám), Chờ ký (vàng), Đang ký (xanh dương), Hoàn tất (xanh lá), Từ chối (đỏ), Đã hủy (xám đậm), Hết hạn (cam).
 - Badge thuê bao: Dùng thử (xanh dương), Hiệu lực (xanh lá), Hết hạn (đỏ).

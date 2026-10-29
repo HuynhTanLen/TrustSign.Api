@@ -5,6 +5,7 @@ using TrustSign.Api.Observability;
 using TrustSign.Api.Security;
 using TrustSign.Application.DependencyInjection;
 using TrustSign.Application.Modules.Identity;
+using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Domain.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -47,6 +48,7 @@ if (app.Environment.IsDevelopment())
     {
         await scope.ServiceProvider.GetRequiredService<TrustSignDbContext>().Database.MigrateAsync();
         await scope.ServiceProvider.GetRequiredService<IAdminSeeder>().SeedAsync(CancellationToken.None);
+        await scope.ServiceProvider.GetRequiredService<IPlanSeeder>().SeedDefaultPlansAsync(CancellationToken.None);
     }
 }
 

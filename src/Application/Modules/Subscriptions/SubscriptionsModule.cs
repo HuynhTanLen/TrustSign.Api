@@ -8,5 +8,21 @@ namespace TrustSign.Application.Modules.Subscriptions;
 /// </summary>
 public static class SubscriptionsModule
 {
-    public static IServiceCollection AddSubscriptionsModule(this IServiceCollection services) => services;
+    public static IServiceCollection AddSubscriptionsModule(this IServiceCollection services)
+    {
+        services.AddOptions<SepayOptions>()
+            .BindConfiguration(SepayOptions.SectionName);
+
+        services.AddScoped<IPlanSeeder, PlanSeeder>();
+        services.AddScoped<ISubscriptionProvisioner, SubscriptionProvisioner>();
+        services.AddScoped<IPlanService, PlanService>();
+        services.AddScoped<ISubscriptionService, SubscriptionService>();
+        services.AddScoped<ISepayWebhookService, SepayWebhookService>();
+        services.AddScoped<IQuotaService, QuotaService>();
+        services.AddScoped<IInvoicePdfService, InvoicePdfService>();
+
+        services.AddHostedService<SubscriptionExpirationWorker>();
+
+        return services;
+    }
 }

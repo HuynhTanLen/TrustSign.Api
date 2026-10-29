@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using TrustSign.Api.Security;
 using TrustSign.Application.Modules.Identity;
 using TrustSign.Application.Modules.Notifications;
+using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
 using TrustSign.Domain.Entities.Identity;
@@ -59,6 +60,7 @@ public sealed class IdentityFlowTests
             _store,
             _issuer,
             _emails,
+            new NoOpSubscriptionProvisioner(),
             smtpOptions,
             _clock);
     }
@@ -383,5 +385,11 @@ public sealed class IdentityFlowTests
         }
 
         public Task SaveChangesAsync(CancellationToken cancel) => Task.CompletedTask;
+    }
+
+    private sealed class NoOpSubscriptionProvisioner : ISubscriptionProvisioner
+    {
+        public Task<Result> ProvisionTrialSubscriptionAsync(Guid tenantId, DateTimeOffset now, CancellationToken cancel = default) =>
+            Task.FromResult(Result.Success());
     }
 }

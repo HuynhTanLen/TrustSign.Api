@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TrustSign.Domain.Entities.Identity;
+using TrustSign.Domain.Entities.Subscriptions;
 
 namespace TrustSign.Domain.Repositories;
 
@@ -15,6 +16,11 @@ public sealed class TrustSignDbContext(DbContextOptions<TrustSignDbContext> opti
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Membership> Memberships => Set<Membership>();
     public DbSet<TenantInvitation> TenantInvitations => Set<TenantInvitation>();
+
+    public DbSet<Plan> Plans => Set<Plan>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(TrustSignDbContext).Assembly);

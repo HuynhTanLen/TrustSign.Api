@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Mail;
 using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Notifications;
+using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
 using TrustSign.Domain.Entities.Identity;
@@ -15,6 +16,7 @@ internal sealed class TenantService(
     IRefreshTokenRepository refreshTokens,
     IAccessTokenIssuer tokenIssuer,
     IEmailSender emailSender,
+    ISubscriptionProvisioner subscriptionProvisioner,
     IOptions<SmtpOptions> smtpOptions,
     TimeProvider timeProvider) : ITenantService
 {
@@ -54,6 +56,8 @@ internal sealed class TenantService(
 
         Membership ownerMembership = Membership.Create(tenant.Id, user.Id, TenantRole.TenantOwner, now);
         await tenants.AddTenantWithOwnerAsync(tenant, ownerMembership, cancel);
+
+        await subscriptionProvisioner.ProvisionTrialSubscriptionAsync(tenant.Id, now, cancel);
 
         await UpdateSessionActiveTenantAsync(sessionId, tenant.Id, now, cancel);
 
