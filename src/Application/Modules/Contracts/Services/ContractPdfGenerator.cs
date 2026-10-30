@@ -101,20 +101,52 @@ internal sealed class ContractPdfGenerator : IContractPdfGenerator
 
     private static PdfFont ResolveFont()
     {
-        try
-        {
-            string winFont = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.Fonts),
-                "arial.ttf");
+        string[] candidatePaths =
+        [
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arial.ttf"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/Library/Fonts/Arial.ttf"
+        ];
 
-            if (File.Exists(winFont))
+        foreach (string fontPath in candidatePaths)
+        {
+            try
             {
-                return PdfFontFactory.CreateFont(winFont, PdfEncodings.IDENTITY_H);
+                if (!string.IsNullOrWhiteSpace(fontPath) && File.Exists(fontPath))
+                {
+                    return PdfFontFactory.CreateFont(fontPath, PdfEncodings.IDENTITY_H);
+                }
+            }
+            catch
+            {
+                // thử đường dẫn tiếp theo
             }
         }
-        catch
+
+        if (Directory.Exists("/usr/share/fonts"))
         {
-            // fallback
+            try
+            {
+                string? anyTtf = Directory
+                    .EnumerateFiles("/usr/share/fonts", "*.ttf", SearchOption.AllDirectories)
+                    .FirstOrDefault(f =>
+                        f.Contains("DejaVuSans", StringComparison.OrdinalIgnoreCase) ||
+                        f.Contains("LiberationSans", StringComparison.OrdinalIgnoreCase) ||
+                        f.Contains("FreeSans", StringComparison.OrdinalIgnoreCase) ||
+                        f.Contains("NotoSans", StringComparison.OrdinalIgnoreCase));
+
+                if (anyTtf is not null)
+                {
+                    return PdfFontFactory.CreateFont(anyTtf, PdfEncodings.IDENTITY_H);
+                }
+            }
+            catch
+            {
+                // bỏ qua nếu không có quyền đọc thư mục
+            }
         }
 
         return PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
