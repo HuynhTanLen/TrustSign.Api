@@ -9,5 +9,16 @@ namespace TrustSign.Application.Modules.Contracts;
 /// </summary>
 public static class ContractsModule
 {
-    public static IServiceCollection AddContractsModule(this IServiceCollection services) => services;
+    public static IServiceCollection AddContractsModule(this IServiceCollection services)
+    {
+        services.AddOptions<ContractStorageOptions>()
+            .BindConfiguration(ContractStorageOptions.SectionName);
+
+        services.AddSingleton<IContractFileStorage, LocalContractFileStorage>();
+        services.AddSingleton<IContractPdfGenerator, ContractPdfGenerator>();
+        services.AddScoped<ITemplateService, TemplateService>();
+        services.AddScoped<IContractService, ContractService>();
+
+        return services;
+    }
 }
