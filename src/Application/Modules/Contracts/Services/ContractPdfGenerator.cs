@@ -58,17 +58,34 @@ internal sealed class ContractPdfGenerator : IContractPdfGenerator
             string[] lines = normalized.Split('\n');
             foreach (string line in lines)
             {
+                string trimmedLine = line.Trim();
+                if (trimmedLine.Equals("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", StringComparison.OrdinalIgnoreCase) ||
+                    trimmedLine.Equals("Độc lập - Tự do - Hạnh phúc", StringComparison.OrdinalIgnoreCase) ||
+                    trimmedLine.Equals(title.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     doc.Add(new Paragraph(" ").SetFontSize(6));
                     continue;
                 }
 
-                doc.Add(new Paragraph(line.TrimEnd())
+                Paragraph p = new Paragraph(line.TrimEnd())
                     .SetFontSize(11)
                     .SetFontColor(TextDark)
                     .SetMultipliedLeading(1.35f)
-                    .SetMarginBottom(6));
+                    .SetMarginBottom(6);
+
+                if (trimmedLine.StartsWith("ĐIỀU ", StringComparison.OrdinalIgnoreCase) ||
+                    trimmedLine.StartsWith("I.", StringComparison.OrdinalIgnoreCase) ||
+                    trimmedLine.StartsWith("II.", StringComparison.OrdinalIgnoreCase))
+                {
+                    p.SimulateBold();
+                }
+
+                doc.Add(p);
             }
 
             // Vùng đại diện các bên ký ở cuối văn bản
