@@ -10,6 +10,25 @@ namespace TrustSign.Domain.Entities.Contracts;
 /// </summary>
 public sealed partial class ContractTemplate
 {
+    private static readonly Dictionary<string, string> FriendlyLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ten_ben_a"] = "Tên doanh nghiệp (Bên A)",
+        ["mst_ben_a"] = "Mã số thuế Bên A",
+        ["dai_dien_ben_a"] = "Người đại diện Bên A",
+        ["ten_ben_b"] = "Tên đối tác / Khách hàng (Bên B)",
+        ["mst_ben_b"] = "Mã số thuế Bên B",
+        ["dai_dien_ben_b"] = "Người đại diện Bên B",
+        ["gia_tri_hop_dong"] = "Giá trị hợp đồng (VNĐ)",
+        ["ngay_hieu_luc"] = "Ngày hiệu lực",
+        ["thoi_han_hop_dong"] = "Thời hạn hợp đồng",
+        ["ho_ten_nhan_vien"] = "Họ và tên nhân viên",
+        ["cccd_nhan_vien"] = "Số CCCD nhân viên",
+        ["vi_tri_cong_viec"] = "Vị trí công việc",
+        ["muc_luong_chinh"] = "Mức lương chính (VNĐ/tháng)",
+        ["muc_dich_bao_mat"] = "Mục đích trao đổi thông tin",
+        ["so_hop_dong_goc"] = "Số hợp đồng gốc"
+    };
+
     private ContractTemplate()
     {
     }
@@ -110,7 +129,24 @@ public sealed partial class ContractTemplate
             }
         }
 
-        string rendered = VariablePlaceholderRegex().Replace(Content, match =>
+        string templateSource = Content;
+        string withoutVars = VariablePlaceholderRegex().Replace(templateSource, string.Empty).Trim();
+        if (withoutVars.Length < 15 && requiredVars.Count > 1)
+        {
+            IEnumerable<string> structuredLines = requiredVars.Select(v =>
+            {
+                string label = FriendlyLabels.TryGetValue(v, out string? friendly)
+                    ? friendly
+                    : v.Replace('_', ' ');
+                return $"- {label}: {{{{{v}}}}}";
+            });
+            templateSource =
+                "Các bên tham gia giao kết hợp đồng với thông tin và điều khoản cụ thể như sau:\n" +
+                string.Join("\n", structuredLines) +
+                "\n\nHai bên cam kết thực hiện đúng các nội dung đã thỏa thuận nêu trên.";
+        }
+
+        string rendered = VariablePlaceholderRegex().Replace(templateSource, match =>
         {
             string varName = match.Groups[1].Value;
             return values is not null && values.TryGetValue(varName, out string? v)
