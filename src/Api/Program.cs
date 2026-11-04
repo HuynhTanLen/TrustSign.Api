@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using TrustSign.Api.Errors;
 using TrustSign.Api.Observability;
@@ -27,8 +28,18 @@ builder.Services.AddControllers();
 builder.Services.AddApiProblemDetails();
 builder.Services.AddHealthChecks().AddDbContextCheck<TrustSignDbContext>(tags: ["ready"]);
 
+// Chạy sau Caddy: lấy IP thật của client cho rate limit và scheme https.
+// Chỉ an toàn vì cổng API không mở ra ngoài (docker-compose.prod.yml không publish), mọi request đều qua Caddy.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseCorrelationId();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -42,7 +53,7 @@ app.MapControllers();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("AutoMigrate"))
 {
     await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
     {
