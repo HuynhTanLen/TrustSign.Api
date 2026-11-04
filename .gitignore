@@ -18,6 +18,8 @@ coverage*/
 keys/
 *.pem
 *.pfx
+appsettings.Development.json
+**/appsettings.Development.json
 appsettings.Local.json
 appsettings.*.Local.json
 
