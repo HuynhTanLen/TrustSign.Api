@@ -5,7 +5,16 @@
 .vs/
 .idea/
 .env
+.env.*
 keys/
+secrets/
+storage/
+*.pem
+*.pfx
+*.key
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.Local.json
 artifacts/
 tests/
 docker-compose.yml

@@ -22,6 +22,18 @@ appsettings.Development.json
 **/appsettings.Development.json
 appsettings.Local.json
 appsettings.*.Local.json
+**/appsettings.Production.json
+**/appsettings.Staging.json
+.env.*
+!.env.example
+*.key
+*.p12
+*.crt
+secrets/
+
+# File hợp đồng/hóa đơn sinh ra khi chạy (chứa dữ liệu cá nhân)
+storage/
+*.log
 
 # Công cụ
 .claude/
