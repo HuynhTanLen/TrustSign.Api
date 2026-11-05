@@ -287,6 +287,25 @@ public sealed class ContractFlowTests : IDisposable
     }
 
     [Fact]
+    public void SetSignersRequestDto_deserializes_from_json_with_string_role()
+    {
+        var options = new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        };
+
+        string json = "{\"signers\":[{\"fullName\":\"Huỳnh Tấn Huy\",\"email\":\"huynhtanlenlb@gmail.com\",\"order\":1,\"pageNumber\":2,\"boxX\":81,\"boxY\":449,\"boxWidth\":160,\"boxHeight\":64,\"role\":\"Signer\"}]}";
+
+        SetSignersRequestDto? dto = System.Text.Json.JsonSerializer.Deserialize<SetSignersRequestDto>(json, options);
+
+        Assert.NotNull(dto);
+        Assert.Single(dto.Signers);
+        Assert.Equal("Huỳnh Tấn Huy", dto.Signers[0].FullName);
+        Assert.Equal(RecipientRole.Signer, dto.Signers[0].Role);
+    }
+
+    [Fact]
     public async Task Send_contract_rolls_back_to_draft_when_quota_exceeded_TC15_TC21()
     {
         byte[] validPdf = _pdfGenerator.RenderTemplateToPdf("HĐ 2", "HD-02", "Nội dung", _clock.GetUtcNow());

@@ -26,7 +26,11 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .WithExposedHeaders(CorrelationIdMiddleware.HeaderName)));
 
 builder.Services.AddMemoryCache();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 builder.Services.AddApiProblemDetails();
 builder.Services.AddHealthChecks().AddDbContextCheck<TrustSignDbContext>(tags: ["ready"]);
 
