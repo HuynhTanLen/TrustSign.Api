@@ -26,6 +26,7 @@ public static class DomainRepositoriesServiceCollectionExtensions
         services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
         services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
+        services.AddScoped<IIdentityVerificationRepository, EfIdentityVerificationRepository>();
 
         // Subscriptions
         services.AddScoped<IPlanRepository, EfPlanRepository>();

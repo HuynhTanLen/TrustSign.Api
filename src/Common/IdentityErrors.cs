@@ -95,4 +95,25 @@ public static class IdentityErrors
 
     public static readonly Error InvitationEmailMismatch =
         Error.Forbidden("Tenant.InvitationEmailMismatch", "Lời mời này được gửi cho một địa chỉ email khác.");
+
+    public static readonly Error EkycInvalidQr =
+        Error.Validation("Ekyc.InvalidQr", "Không đọc được mã QR trên CCCD. Hãy chụp lại mặt trước rõ nét, đủ sáng.");
+
+    public static readonly Error EkycInvalidImage =
+        Error.Validation("Ekyc.InvalidImage", "Ảnh phải là JPEG hoặc PNG và không quá 5 MB.");
+
+    public static readonly Error EkycFaceMismatch =
+        Error.Validation("Ekyc.FaceMismatch", "Khuôn mặt không khớp với ảnh trên CCCD.");
+
+    public static readonly Error EkycAlreadyVerified =
+        Error.Conflict("Ekyc.AlreadyVerified", "Tài khoản đã được xác minh danh tính.");
+
+    public static readonly Error EkycCitizenIdTaken =
+        Error.Conflict("Ekyc.CitizenIdTaken", "Số CCCD này đã được dùng để xác minh một tài khoản khác.");
+
+    public static readonly Error EkycNotFound =
+        Error.NotFound("Ekyc.NotFound", "Không tìm thấy hồ sơ xác minh.");
+
+    public static readonly Error EkycNotVerified =
+        Error.Validation("Ekyc.NotVerified", "Hồ sơ này không còn ở trạng thái đã xác minh.");
 }

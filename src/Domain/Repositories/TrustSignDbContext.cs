@@ -19,6 +19,7 @@ public sealed class TrustSignDbContext(DbContextOptions<TrustSignDbContext> opti
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Membership> Memberships => Set<Membership>();
     public DbSet<TenantInvitation> TenantInvitations => Set<TenantInvitation>();
+    public DbSet<IdentityVerification> IdentityVerifications => Set<IdentityVerification>();
 
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();

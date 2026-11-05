@@ -381,6 +381,109 @@ namespace TrustSign.Domain.Migrations
                     b.ToTable("email_verification_tokens", "identity");
                 });
 
+            modelBuilder.Entity("TrustSign.Domain.Entities.Identity.IdentityVerification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("address");
+
+                    b.Property<string>("BackKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("back_key");
+
+                    b.Property<string>("CitizenId")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("citizen_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("DateOfBirth")
+                        .HasColumnType("date")
+                        .HasColumnName("date_of_birth");
+
+                    b.Property<double>("FaceDistance")
+                        .HasColumnType("double precision")
+                        .HasColumnName("face_distance");
+
+                    b.Property<string>("FrontKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("front_key");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("Gender")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("gender");
+
+                    b.Property<DateOnly?>("IssuedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("issued_on");
+
+                    b.Property<string>("RevokeReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("revoke_reason");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<Guid?>("RevokedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revoked_by_user_id");
+
+                    b.Property<string>("SelfieKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("selfie_key");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_identity_verifications");
+
+                    b.HasIndex("CitizenId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_identity_verifications_citizen_id")
+                        .HasFilter("status = 'Verified'");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_identity_verifications_user_id")
+                        .HasFilter("status = 'Verified'");
+
+                    b.ToTable("identity_verifications", "identity");
+                });
+
             modelBuilder.Entity("TrustSign.Domain.Entities.Identity.Membership", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1006,6 +1109,16 @@ namespace TrustSign.Domain.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_email_verification_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("TrustSign.Domain.Entities.Identity.IdentityVerification", b =>
+                {
+                    b.HasOne("TrustSign.Domain.Entities.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_identity_verifications_users_user_id");
                 });
 
             modelBuilder.Entity("TrustSign.Domain.Entities.Identity.Membership", b =>
