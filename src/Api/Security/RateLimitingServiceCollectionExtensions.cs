@@ -13,6 +13,7 @@ public static class RateLimitingServiceCollectionExtensions
     /// Giới hạn tần suất bằng cửa sổ trượt 60 giây chia 6 đoạn (TC13, NFR04).
     /// - Endpoint đăng nhập / đăng ký: tối đa 10 lần/phút theo IP (GW-01).
     /// - Các endpoint khác: 300 đọc / 30 ghi mỗi phút theo (user hoặc IP).
+    ///   Gồm cả /api/auth/forgot-password, /reset-password, /change-password (hạn mức ghi).
     /// Phải chạy sau UseAuthentication để đọc được claim <c>sub</c>.
     /// </summary>
     public static IServiceCollection AddTrustSignRateLimiter(this IServiceCollection services) =>

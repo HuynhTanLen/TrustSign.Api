@@ -15,4 +15,8 @@ public interface IContractFileStorage
     /// Kiểm tra chữ ký HMAC và thời hạn của token xem tài liệu.
     /// </summary>
     bool ValidateDocumentToken(string token, out Guid tenantId, out Guid contractId, DateTimeOffset now);
+
+    string CreateSigningToken(Guid contractId, Guid signerId, DateTimeOffset now);
+
+    bool ValidateSigningToken(string token, out Guid contractId, out Guid signerId, DateTimeOffset now);
 }

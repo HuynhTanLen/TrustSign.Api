@@ -5,6 +5,7 @@ using TrustSign.Api.Errors;
 using TrustSign.Api.Observability;
 using TrustSign.Api.Security;
 using TrustSign.Application.DependencyInjection;
+using TrustSign.Application.Modules.Contracts;
 using TrustSign.Application.Modules.Identity;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Domain.Repositories;
@@ -24,6 +25,7 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .AllowCredentials()
     .WithExposedHeaders(CorrelationIdMiddleware.HeaderName)));
 
+builder.Services.AddMemoryCache();
 builder.Services.AddControllers();
 builder.Services.AddApiProblemDetails();
 builder.Services.AddHealthChecks().AddDbContextCheck<TrustSignDbContext>(tags: ["ready"]);
@@ -60,6 +62,17 @@ if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("AutoMig
         await scope.ServiceProvider.GetRequiredService<TrustSignDbContext>().Database.MigrateAsync();
         await scope.ServiceProvider.GetRequiredService<IAdminSeeder>().SeedAsync(CancellationToken.None);
         await scope.ServiceProvider.GetRequiredService<IPlanSeeder>().SeedDefaultPlansAsync(CancellationToken.None);
+    }
+}
+
+if (app.Environment.IsProduction())
+{
+    var storageOpts = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<ContractStorageOptions>>().Value;
+    if (string.IsNullOrWhiteSpace(storageOpts.DocumentTokenSecret) ||
+        storageOpts.DocumentTokenSecret.Equals("trustsign_dev_document_token_hmac_secret_2026", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "LỖI BẢO MẬT: Chưa cấu hình 'ContractStorage:DocumentTokenSecret' an toàn trên môi trường Production!");
     }
 }
 

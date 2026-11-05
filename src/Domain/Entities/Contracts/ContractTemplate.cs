@@ -103,6 +103,8 @@ public sealed partial class ContractTemplate
         return Result.Success();
     }
 
+    public IReadOnlyList<string> Variables => GetVariables();
+
     public IReadOnlyList<string> GetVariables()
     {
         if (string.IsNullOrWhiteSpace(VariablesJson))

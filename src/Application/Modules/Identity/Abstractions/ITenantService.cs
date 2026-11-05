@@ -12,6 +12,14 @@ public interface ITenantService
 
     Task<Result<IReadOnlyList<TenantDto>>> GetMyTenantsAsync(Guid userId, CancellationToken cancel);
 
+    Task<Result<TenantDto>> GetCurrentTenantAsync(Guid tenantId, Guid userId, CancellationToken cancel);
+
+    Task<Result<TenantDto>> UpdateCurrentTenantAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        UpdateTenantRequestDto request,
+        CancellationToken cancel);
+
     Task<Result<AuthResponseDto>> SwitchTenantAsync(
         Guid userId,
         Guid sessionId,

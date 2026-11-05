@@ -1,3 +1,5 @@
+using TrustSign.Common.Enums;
+
 namespace TrustSign.Application.Modules.Contracts;
 
 public sealed record ContractListItemDto(
@@ -22,7 +24,11 @@ public sealed record ContractSignerDto(
     float BoxX,
     float BoxY,
     float BoxWidth,
-    float BoxHeight);
+    float BoxHeight,
+    string Role = nameof(RecipientRole.Signer),
+    string? Phone = null,
+    string? Organization = null,
+    string? Title = null);
 
 public sealed record ContractSignatureDto(
     string SignerName,
@@ -69,7 +75,11 @@ public sealed record SetSignerItemDto(
     float? BoxX = null,
     float? BoxY = null,
     float? BoxWidth = null,
-    float? BoxHeight = null);
+    float? BoxHeight = null,
+    RecipientRole Role = RecipientRole.Signer,
+    string? Phone = null,
+    string? Organization = null,
+    string? Title = null);
 
 public sealed record SetSignersRequestDto(IReadOnlyList<SetSignerItemDto> Signers);
 

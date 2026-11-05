@@ -38,6 +38,7 @@ public sealed class TemplatesController(ITemplateService templateService) : Cont
     }
 
     [HttpPost]
+    [Authorize(Policy = AuthorizationPolicies.ContractManagerOrOwner)]
     public async Task<IActionResult> Create([FromBody] SaveTemplateRequestDto request, CancellationToken cancel)
     {
         if (User.GetTenantId() is not { } tenantId)
@@ -57,6 +58,7 @@ public sealed class TemplatesController(ITemplateService templateService) : Cont
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = AuthorizationPolicies.ContractManagerOrOwner)]
     public async Task<IActionResult> Update(Guid id, [FromBody] SaveTemplateRequestDto request, CancellationToken cancel)
     {
         if (User.GetTenantId() is not { } tenantId)
@@ -69,6 +71,7 @@ public sealed class TemplatesController(ITemplateService templateService) : Cont
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = AuthorizationPolicies.ContractManagerOrOwner)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancel)
     {
         if (User.GetTenantId() is not { } tenantId)

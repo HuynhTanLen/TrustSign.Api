@@ -19,11 +19,17 @@ public interface IContractRepository
     /// <summary>Tìm hợp đồng (kèm người ký) thuộc đúng doanh nghiệp <paramref name="tenantId"/> (TC10, TC14).</summary>
     Task<Contract?> FindByIdAsync(Guid tenantId, Guid contractId, CancellationToken cancel);
 
+    /// <summary>Tìm hợp đồng (kèm người ký) theo ID.</summary>
+    Task<Contract?> FindByIdAsync(Guid contractId, CancellationToken cancel);
+
     Task<bool> CodeExistsAsync(string code, CancellationToken cancel);
 
     Task AddAsync(Contract contract, CancellationToken cancel);
 
     Task ReplaceSignersAsync(Contract contract, IReadOnlyList<ContractSigner> newSigners, CancellationToken cancel);
+
+    /// <summary>Quét và chuyển trạng thái các hợp đồng quá hạn sang Expired.</summary>
+    Task<int> ExpireDueAsync(DateTimeOffset now, CancellationToken cancel);
 
     Task SaveChangesAsync(CancellationToken cancel);
 }

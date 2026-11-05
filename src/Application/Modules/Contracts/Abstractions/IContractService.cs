@@ -60,4 +60,15 @@ public interface IContractService
         Guid contractId,
         string token,
         CancellationToken cancel = default);
+
+    Task<Result> ProcessSignOrApproveAsync(
+        Guid contractId,
+        Guid signerId,
+        CancellationToken cancel = default);
+
+    Task<Result> DeclineAsync(
+        Guid contractId,
+        Guid signerId,
+        string reason,
+        CancellationToken cancel = default);
 }

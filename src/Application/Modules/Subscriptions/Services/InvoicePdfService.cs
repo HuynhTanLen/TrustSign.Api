@@ -1,6 +1,4 @@
 using System.Globalization;
-using iText.IO.Font;
-using iText.IO.Font.Constants;
 using iText.Kernel.Colors;
 using iText.Kernel.Font;
 using iText.Kernel.Pdf;
@@ -8,7 +6,9 @@ using iText.Layout;
 using iText.Layout.Borders;
 using iText.Layout.Element;
 using iText.Layout.Properties;
+using TrustSign.Application.Common.Pdf;
 using TrustSign.Common;
+using TrustSign.Common.Enums;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.Entities.Subscriptions;
 using TrustSign.Domain.IRepositories.Identity;
@@ -20,6 +20,7 @@ internal sealed class InvoicePdfService(
     IInvoiceRepository invoices,
     ITenantRepository tenants) : IInvoicePdfService
 {
+    private static readonly CultureInfo ViCulture = CultureInfo.GetCultureInfo("vi-VN");
     private static readonly Color PrimaryBlue = new DeviceRgb(31, 95, 168); // #1f5fa8
     private static readonly Color HeaderGray = new DeviceRgb(245, 247, 250);
     private static readonly Color TextDark = new DeviceRgb(31, 35, 40);
@@ -46,7 +47,7 @@ internal sealed class InvoicePdfService(
         using (var pdf = new PdfDocument(writer))
         using (var document = new Document(pdf))
         {
-            PdfFont font = ResolveFont();
+            PdfFont font = VietnamesePdfFontProvider.CreateFont();
             document.SetFont(font);
             document.SetMargins(36, 36, 36, 36);
 
@@ -97,11 +98,11 @@ internal sealed class InvoicePdfService(
 
             string statusText = invoice.Status switch
             {
-                Common.Enums.InvoiceStatus.Paid => "ĐÃ THANH TOÁN",
-                Common.Enums.InvoiceStatus.Pending => "CHỜ THANH TOÁN",
+                InvoiceStatus.Paid => "ĐÃ THANH TOÁN",
+                InvoiceStatus.Pending => "CHỜ THANH TOÁN",
                 _ => "HẾT HẠN"
             };
-            Color statusColor = invoice.Status == Common.Enums.InvoiceStatus.Paid ? SuccessGreen : PrimaryBlue;
+            Color statusColor = invoice.Status == InvoiceStatus.Paid ? SuccessGreen : PrimaryBlue;
 
             paymentStatusCell.Add(new Paragraph(statusText).SetFontSize(13).SimulateBold().SetFontColor(statusColor));
             if (invoice.PaidAt.HasValue)
@@ -129,10 +130,11 @@ internal sealed class InvoicePdfService(
             detailsTable.AddHeaderCell(CreateHeaderCell("Thành tiền (VND)", TextAlignment.RIGHT));
 
             // Item Row
+            string formattedAmount = invoice.Amount.ToString("N0", ViCulture);
             var itemNumCell = new Cell().SetPadding(8).SetTextAlignment(TextAlignment.CENTER).Add(new Paragraph("1"));
             var itemNameCell = new Cell().SetPadding(8).Add(new Paragraph($"Gói dịch vụ {invoice.PlanName}"));
             var itemDurationCell = new Cell().SetPadding(8).SetTextAlignment(TextAlignment.CENTER).Add(new Paragraph($"{invoice.PlanDurationDays} ngày"));
-            var itemAmountCell = new Cell().SetPadding(8).SetTextAlignment(TextAlignment.RIGHT).Add(new Paragraph(invoice.Amount.ToString("N0", new CultureInfo("vi-VN"))));
+            var itemAmountCell = new Cell().SetPadding(8).SetTextAlignment(TextAlignment.RIGHT).Add(new Paragraph(formattedAmount));
 
             detailsTable.AddCell(itemNumCell);
             detailsTable.AddCell(itemNameCell);
@@ -149,7 +151,7 @@ internal sealed class InvoicePdfService(
                 .SetTextAlignment(TextAlignment.RIGHT)
                 .SetFontSize(12)
                 .SetFontColor(PrimaryBlue)
-                .Add(new Paragraph($"{invoice.Amount.ToString("N0", new CultureInfo("vi-VN"))} VND").SimulateBold());
+                .Add(new Paragraph($"{formattedAmount} VND").SimulateBold());
 
             detailsTable.AddCell(totalLabelCell);
             detailsTable.AddCell(totalAmountCell);
@@ -180,23 +182,5 @@ internal sealed class InvoicePdfService(
             .SetFontSize(10)
             .SetFontColor(TextDark)
             .Add(new Paragraph(text).SimulateBold());
-    }
-
-    private static PdfFont ResolveFont()
-    {
-        try
-        {
-            string winFont = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arial.ttf");
-            if (File.Exists(winFont))
-            {
-                return PdfFontFactory.CreateFont(winFont, PdfEncodings.IDENTITY_H);
-            }
-        }
-        catch
-        {
-            // fallback
-        }
-
-        return PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
     }
 }

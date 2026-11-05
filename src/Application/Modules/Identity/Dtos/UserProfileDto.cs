@@ -10,4 +10,6 @@ public sealed record UserProfileDto(
     bool EmailVerified,
     bool HasTenant,
     Guid? ActiveTenantId,
-    IReadOnlyList<UserTenantDto> Tenants);
+    IReadOnlyList<UserTenantDto> Tenants,
+    string? PhoneNumber = null,
+    string? JobTitle = null);

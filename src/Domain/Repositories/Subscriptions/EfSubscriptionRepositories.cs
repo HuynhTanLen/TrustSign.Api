@@ -9,6 +9,7 @@ internal sealed class EfPlanRepository(TrustSignDbContext db) : IPlanRepository
 {
     public async Task<IReadOnlyList<Plan>> ListAsync(bool includeInactive, CancellationToken cancel) =>
         await db.Plans
+            .AsNoTracking()
             .Where(plan => includeInactive || plan.IsActive)
             .OrderByDescending(plan => plan.IsTrial)
             .ThenBy(plan => plan.Price)
@@ -20,10 +21,14 @@ internal sealed class EfPlanRepository(TrustSignDbContext db) : IPlanRepository
     public async Task<IReadOnlyDictionary<Guid, Plan>> FindByIdsAsync(IReadOnlyCollection<Guid> planIds, CancellationToken cancel) =>
         planIds.Count == 0
             ? new Dictionary<Guid, Plan>()
-            : await db.Plans.Where(plan => planIds.Contains(plan.Id)).ToDictionaryAsync(plan => plan.Id, cancel);
+            : await db.Plans
+                .AsNoTracking()
+                .Where(plan => planIds.Contains(plan.Id))
+                .ToDictionaryAsync(plan => plan.Id, cancel);
 
     public Task<Plan?> FindActiveTrialAsync(CancellationToken cancel) =>
         db.Plans
+            .AsNoTracking()
             .Where(plan => plan.IsTrial && plan.IsActive)
             .OrderBy(plan => plan.CreatedAt)
             .FirstOrDefaultAsync(cancel);
@@ -99,6 +104,7 @@ internal sealed class EfInvoiceRepository(TrustSignDbContext db) : IInvoiceRepos
 
     public async Task<IReadOnlyList<Invoice>> ListByTenantAsync(Guid tenantId, CancellationToken cancel) =>
         await db.Invoices
+            .AsNoTracking()
             .Where(invoice => invoice.TenantId == tenantId)
             .OrderByDescending(invoice => invoice.CreatedAt)
             .ToListAsync(cancel);

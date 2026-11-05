@@ -22,6 +22,8 @@ internal sealed class UserService(IUserRepository users, ITenantRepository tenan
         Guid userId,
         Guid? activeTenantId,
         string fullName,
+        string? phoneNumber,
+        string? jobTitle,
         CancellationToken cancel)
     {
         User? user = await users.FindByIdAsync(userId, cancel);
@@ -30,7 +32,7 @@ internal sealed class UserService(IUserRepository users, ITenantRepository tenan
             return IdentityErrors.SessionInvalid;
         }
 
-        Result update = user.UpdateProfile(fullName);
+        Result update = user.UpdateProfile(fullName, phoneNumber, jobTitle);
         if (update.IsFailure)
         {
             return update.Error;

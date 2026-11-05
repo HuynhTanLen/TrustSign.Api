@@ -49,6 +49,22 @@ public sealed class RateLimiterTests
         Assert.False(_limiter.AttemptAcquire(Request(HttpMethods.Post, userId: null, path: "/api/auth/register")).IsAcquired);
     }
 
+    [Theory]
+    [InlineData("/api/auth/forgot-password")]
+    [InlineData("/api/auth/reset-password")]
+    [InlineData("/api/auth/change-password")]
+    public void Password_endpoints_use_the_write_limit(string path)
+    {
+        HttpContext caller = Request(HttpMethods.Post, userId: null, path: path);
+
+        for (int i = 0; i < RateLimitingServiceCollectionExtensions.WritePermitsPerMinute; i++)
+        {
+            Assert.True(_limiter.AttemptAcquire(caller).IsAcquired, $"Request thứ {i + 1} phải được phục vụ.");
+        }
+
+        Assert.False(_limiter.AttemptAcquire(caller).IsAcquired);
+    }
+
     [Fact]
     public void One_caller_hitting_the_limit_does_not_block_another()
     {

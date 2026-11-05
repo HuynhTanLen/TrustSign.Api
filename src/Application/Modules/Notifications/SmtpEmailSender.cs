@@ -8,6 +8,7 @@ namespace TrustSign.Application.Modules.Notifications;
 
 internal sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpEmailSender> logger) : IEmailSender
 {
+    private const int DefaultSmtpTimeoutMs = 10_000;
     private readonly SmtpOptions _options = options.Value;
 
     public async Task SendAsync(EmailMessage message, CancellationToken cancel)
@@ -25,7 +26,8 @@ internal sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<Smt
 
         using SmtpClient client = new(_options.Host, _options.Port)
         {
-            EnableSsl = _options.UseSsl
+            EnableSsl = _options.UseSsl,
+            Timeout = DefaultSmtpTimeoutMs
         };
 
         if (!string.IsNullOrWhiteSpace(_options.Username))
@@ -35,19 +37,21 @@ internal sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<Smt
 
         try
         {
-            await client.SendMailAsync(mail, cancel);
+            using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            timeoutCts.CancelAfter(DefaultSmtpTimeoutMs);
+
+            await client.SendMailAsync(mail, timeoutCts.Token);
             logger.LogInformation("Đã gửi email '{Subject}' tới {Recipient}.", message.Subject, message.To);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancel.IsCancellationRequested)
         {
             logger.LogWarning(
                 ex,
-                "Không thể kết nối SMTP ({Host}:{Port}) để gửi email '{Subject}' tới {Recipient}. Nội dung: {Body}",
+                "Không thể kết nối SMTP ({Host}:{Port}) để gửi email '{Subject}' tới {Recipient}.",
                 _options.Host,
                 _options.Port,
                 message.Subject,
-                message.To,
-                message.HtmlBody);
+                message.To);
         }
     }
 }

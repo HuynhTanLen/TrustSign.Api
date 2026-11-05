@@ -1,5 +1,3 @@
-using iText.IO.Font;
-using iText.IO.Font.Constants;
 using iText.Kernel.Colors;
 using iText.Kernel.Font;
 using iText.Kernel.Geom;
@@ -7,6 +5,7 @@ using iText.Kernel.Pdf;
 using iText.Layout;
 using iText.Layout.Element;
 using iText.Layout.Properties;
+using TrustSign.Application.Common.Pdf;
 
 namespace TrustSign.Application.Modules.Contracts;
 
@@ -23,7 +22,7 @@ internal sealed class ContractPdfGenerator : IContractPdfGenerator
         using (PdfDocument pdf = new(writer))
         using (Document doc = new(pdf, PageSize.A4))
         {
-            PdfFont font = ResolveFont();
+            PdfFont font = VietnamesePdfFontProvider.CreateFont();
             doc.SetFont(font);
             doc.SetMargins(50, 55, 50, 55);
 
@@ -97,58 +96,5 @@ internal sealed class ContractPdfGenerator : IContractPdfGenerator
         }
 
         return output.ToArray();
-    }
-
-    private static PdfFont ResolveFont()
-    {
-        string[] candidatePaths =
-        [
-            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "arial.ttf"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-            "/usr/share/fonts/TTF/DejaVuSans.ttf",
-            "/Library/Fonts/Arial.ttf"
-        ];
-
-        foreach (string fontPath in candidatePaths)
-        {
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(fontPath) && File.Exists(fontPath))
-                {
-                    return PdfFontFactory.CreateFont(fontPath, PdfEncodings.IDENTITY_H);
-                }
-            }
-            catch
-            {
-                // thử đường dẫn tiếp theo
-            }
-        }
-
-        if (Directory.Exists("/usr/share/fonts"))
-        {
-            try
-            {
-                string? anyTtf = Directory
-                    .EnumerateFiles("/usr/share/fonts", "*.ttf", SearchOption.AllDirectories)
-                    .FirstOrDefault(f =>
-                        f.Contains("DejaVuSans", StringComparison.OrdinalIgnoreCase) ||
-                        f.Contains("LiberationSans", StringComparison.OrdinalIgnoreCase) ||
-                        f.Contains("FreeSans", StringComparison.OrdinalIgnoreCase) ||
-                        f.Contains("NotoSans", StringComparison.OrdinalIgnoreCase));
-
-                if (anyTtf is not null)
-                {
-                    return PdfFontFactory.CreateFont(anyTtf, PdfEncodings.IDENTITY_H);
-                }
-            }
-            catch
-            {
-                // bỏ qua nếu không có quyền đọc thư mục
-            }
-        }
-
-        return PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
     }
 }

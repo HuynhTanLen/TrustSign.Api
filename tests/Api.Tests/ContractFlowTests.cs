@@ -406,6 +406,117 @@ public sealed class ContractFlowTests : IDisposable
         Assert.Equal(2, managerList.Value.Count);
     }
 
+    [Fact]
+    public async Task Contract_without_signer_role_is_rejected_with_validation_error()
+    {
+        byte[] validPdf = _pdfGenerator.RenderTemplateToPdf("HĐ", "HD-NOSIGNER", "Nội dung", _clock.GetUtcNow());
+        Result<CreatedContractResponseDto> draft = await _contractService.UploadDraftAsync(
+            _tenantA,
+            _ownerUserId,
+            "Hợp đồng không có Signer",
+            validPdf,
+            Cancel);
+
+        Result setSignersResult = await _contractService.SetSignersAsync(
+            _tenantA,
+            _ownerUserId,
+            TenantRole.TenantOwner,
+            draft.Value.ContractId,
+            new SetSignersRequestDto([
+                new SetSignerItemDto("Người Duyệt 1", "approver1@domain.vn", 1, Role: RecipientRole.Approver),
+                new SetSignerItemDto("Người Nhận Cc", "cc@domain.vn", 2, Role: RecipientRole.Cc)
+            ]),
+            Cancel);
+
+        Assert.True(setSignersResult.IsFailure);
+        Assert.Equal(ContractErrors.AtLeastOneSignerRequired, setSignersResult.Error);
+    }
+
+    [Fact]
+    public async Task Sequential_flow_signer_approver_signer_advances_turn_and_notifies_cc_on_completion()
+    {
+        byte[] validPdf = _pdfGenerator.RenderTemplateToPdf("HĐ", "HD-FLOW", "Nội dung", _clock.GetUtcNow());
+        Result<CreatedContractResponseDto> draft = await _contractService.UploadDraftAsync(
+            _tenantA,
+            _ownerUserId,
+            "Hợp đồng luồng phức hợp",
+            validPdf,
+            Cancel);
+
+        Guid contractId = draft.Value.ContractId;
+
+        // Cấu hình: Signer 1 -> Approver 2 -> Signer 3 -> Cc 4
+        Result setSigners = await _contractService.SetSignersAsync(
+            _tenantA,
+            _ownerUserId,
+            TenantRole.TenantOwner,
+            contractId,
+            new SetSignersRequestDto([
+                new SetSignerItemDto("Nguyễn Văn Ký 1", "signer1@company.vn", 1, PageNumber: 1, BoxX: 100, BoxY: 100, BoxWidth: 150, BoxHeight: 50, Role: RecipientRole.Signer),
+                new SetSignerItemDto("Trần Văn Duyệt 2", "approver2@company.vn", 2, Role: RecipientRole.Approver, Title: "Trưởng phòng"),
+                new SetSignerItemDto("Lê Văn Ký 3", "signer3@company.vn", 3, PageNumber: 1, BoxX: 300, BoxY: 100, BoxWidth: 150, BoxHeight: 50, Role: RecipientRole.Signer, Organization: "Đối tác X", Title: "Giám đốc"),
+                new SetSignerItemDto("Phạm Văn Theo Dõi 4", "cc4@company.vn", 4, Role: RecipientRole.Cc)
+            ]),
+            Cancel);
+        Assert.True(setSigners.IsSuccess);
+
+        // Gửi ký -> kích hoạt lượt #1 (Signer 1), gửi email cho Signer 1
+        Result send = await _contractService.SendForSigningAsync(
+            _tenantA,
+            _ownerUserId,
+            TenantRole.TenantOwner,
+            contractId,
+            new SendContractRequestDto(_clock.GetUtcNow().AddDays(3)),
+            Cancel);
+        Assert.True(send.IsSuccess);
+
+        Result<ContractDetailDto> detail1 = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
+        Assert.Equal(ContractStatus.Pending.ToString(), detail1.Value.Status);
+        Assert.Equal(SignerStatus.Current.ToString(), detail1.Value.Signers[0].Status);
+        Assert.Equal(SignerStatus.Waiting.ToString(), detail1.Value.Signers[1].Status);
+        Assert.Equal(SignerStatus.Waiting.ToString(), detail1.Value.Signers[2].Status);
+        Assert.Equal(SignerStatus.Waiting.ToString(), detail1.Value.Signers[3].Status);
+
+        // Lấy danh sách ID signer từ database
+        Contract contract = (await _store.FindByIdAsync(_tenantA, contractId, Cancel))!;
+        ContractSigner s1 = contract.Signers.First(s => s.SignOrder == 1);
+        ContractSigner s2 = contract.Signers.First(s => s.SignOrder == 2);
+        ContractSigner s3 = contract.Signers.First(s => s.SignOrder == 3);
+        ContractSigner s4 = contract.Signers.First(s => s.SignOrder == 4);
+
+        // Lượt 1: Signer 1 ký -> chuyển lượt sang Approver 2
+        Result sign1 = await _contractService.ProcessSignOrApproveAsync(contractId, s1.Id, Cancel);
+        Assert.True(sign1.IsSuccess);
+
+        Result<ContractDetailDto> detail2 = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
+        Assert.Equal(ContractStatus.Signing.ToString(), detail2.Value.Status);
+        Assert.Equal(SignerStatus.Signed.ToString(), detail2.Value.Signers[0].Status);
+        Assert.Equal(SignerStatus.Current.ToString(), detail2.Value.Signers[1].Status);
+        Assert.Equal(SignerStatus.Waiting.ToString(), detail2.Value.Signers[2].Status);
+
+        // Lượt 2: Approver 2 duyệt -> chuyển lượt sang Signer 3
+        Result approve2 = await _contractService.ProcessSignOrApproveAsync(contractId, s2.Id, Cancel);
+        Assert.True(approve2.IsSuccess);
+
+        Result<ContractDetailDto> detail3 = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
+        Assert.Equal(SignerStatus.Signed.ToString(), detail3.Value.Signers[1].Status);
+        Assert.Equal(SignerStatus.Current.ToString(), detail3.Value.Signers[2].Status);
+
+        // Lượt 3: Signer 3 ký -> người ký/duyệt cuối cùng -> Hợp đồng hoàn tất (Completed), gửi email cho người nhận Cc (s4)
+        Result sign3 = await _contractService.ProcessSignOrApproveAsync(contractId, s3.Id, Cancel);
+        Assert.True(sign3.IsSuccess);
+
+        Result<ContractDetailDto> detailDone = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
+        Assert.Equal(ContractStatus.Completed.ToString(), detailDone.Value.Status);
+        Assert.Equal(SignerStatus.Signed.ToString(), detailDone.Value.Signers[2].Status);
+
+        // Kiểm tra email gửi cho người nhận Cc
+        Assert.NotNull(_emails.LastSent);
+        Assert.Equal("cc4@company.vn", _emails.LastSent!.To);
+        Assert.Contains("Bản sao hợp đồng hoàn tất", _emails.LastSent!.Subject);
+    }
+
+
     private sealed class FakeClock(DateTimeOffset initial) : TimeProvider
     {
         public DateTimeOffset Current { get; set; } = initial;
@@ -536,6 +647,9 @@ public sealed class ContractFlowTests : IDisposable
         public Task<Contract?> FindByIdAsync(Guid tenantId, Guid contractId, CancellationToken cancel) =>
             Task.FromResult(_contracts.FirstOrDefault(c => c.Id == contractId && c.TenantId == tenantId));
 
+        Task<Contract?> IContractRepository.FindByIdAsync(Guid contractId, CancellationToken cancel) =>
+            Task.FromResult(_contracts.FirstOrDefault(c => c.Id == contractId));
+
         public Task<bool> CodeExistsAsync(string code, CancellationToken cancel) =>
             Task.FromResult(_contracts.Any(c => string.Equals(c.Code, code, StringComparison.OrdinalIgnoreCase)));
 
@@ -545,11 +659,22 @@ public sealed class ContractFlowTests : IDisposable
             return Task.CompletedTask;
         }
 
+        public Task<int> ExpireDueAsync(DateTimeOffset now, CancellationToken cancel)
+        {
+            int count = 0;
+            foreach (var c in _contracts.Where(c => (c.Status == ContractStatus.Pending || c.Status == ContractStatus.Signing) && c.DueAt != null && c.DueAt <= now))
+            {
+                c.MarkExpiredIfDue(now);
+                count++;
+            }
+            return Task.FromResult(count);
+        }
+
         public Task ReplaceSignersAsync(Contract contract, IReadOnlyList<ContractSigner> newSigners, CancellationToken cancel) =>
             Task.CompletedTask;
 
         // IUserRepository
-        public Task<User?> FindByIdAsync(Guid id, CancellationToken cancel) =>
+        Task<User?> IUserRepository.FindByIdAsync(Guid id, CancellationToken cancel) =>
             Task.FromResult(_users.FirstOrDefault(u => u.Id == id));
 
         public Task<IReadOnlyDictionary<Guid, User>> FindByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancel) =>

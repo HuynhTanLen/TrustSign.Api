@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Subscriptions;
@@ -20,17 +22,37 @@ public sealed class SepayWebhookController(
         string expectedKey = _options.WebhookApiKey;
 
         // SePay hỗ trợ cấu hình gửi kèm header: Authorization: Apikey <Secret> hoặc Bearer <Secret>
-        bool isAuthorized = !string.IsNullOrWhiteSpace(authHeader) &&
-            (authHeader.Equals($"Apikey {expectedKey}", StringComparison.Ordinal) ||
-             authHeader.Equals($"Bearer {expectedKey}", StringComparison.Ordinal) ||
-             authHeader.Equals(expectedKey, StringComparison.Ordinal));
-
-        if (!isAuthorized)
+        if (!IsValidWebhookSecret(authHeader, expectedKey))
         {
             return Unauthorized(new { message = "Khóa API SePay không hợp lệ." });
         }
 
         Result result = await webhookService.ProcessWebhookAsync(payload, cancel);
-        return result.IsSuccess ? Ok(new { success = true }) : StatusCode(StatusCodes.Status500InternalServerError, new { message = result.Error.Message });
+        return result.IsSuccess
+            ? Ok(new { success = true })
+            : StatusCode(StatusCodes.Status500InternalServerError, new { message = result.Error.Message });
+    }
+
+    private static bool IsValidWebhookSecret(string? authHeader, string expectedKey)
+    {
+        if (string.IsNullOrWhiteSpace(authHeader) || string.IsNullOrWhiteSpace(expectedKey))
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> tokenSpan = authHeader.AsSpan().Trim();
+        if (tokenSpan.StartsWith("Apikey ", StringComparison.OrdinalIgnoreCase))
+        {
+            tokenSpan = tokenSpan["Apikey ".Length..].Trim();
+        }
+        else if (tokenSpan.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            tokenSpan = tokenSpan["Bearer ".Length..].Trim();
+        }
+
+        byte[] providedBytes = Encoding.UTF8.GetBytes(tokenSpan.ToString());
+        byte[] expectedBytes = Encoding.UTF8.GetBytes(expectedKey);
+
+        return CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes);
     }
 }

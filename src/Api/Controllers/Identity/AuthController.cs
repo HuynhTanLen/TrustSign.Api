@@ -76,6 +76,34 @@ public sealed class AuthController(
         return NoContent();
     }
 
+    // Ba endpoint mật khẩu là POST nên đi qua hạn mức "write" của rate limiter toàn cục (30 request/phút theo user hoặc IP).
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDto request, CancellationToken cancel)
+    {
+        Result<ActionMessageDto> result = await auth.ForgotPasswordAsync(request.Email, cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequestDto request, CancellationToken cancel)
+    {
+        Result<ActionMessageDto> result = await auth.ResetPasswordAsync(request, cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
+    [Authorize]
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequestDto request, CancellationToken cancel)
+    {
+        if (User.GetUserId() is not { } userId)
+        {
+            return this.ToProblem(IdentityErrors.SessionInvalid);
+        }
+
+        Result<ActionMessageDto> result = await auth.ChangePasswordAsync(userId, User.GetSessionId(), request, cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
     [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> Me(CancellationToken cancel)
@@ -98,7 +126,13 @@ public sealed class AuthController(
             return this.ToProblem(IdentityErrors.SessionInvalid);
         }
 
-        Result<UserProfileDto> result = await users.UpdateProfileAsync(userId, User.GetTenantId(), request.FullName, cancel);
+        Result<UserProfileDto> result = await users.UpdateProfileAsync(
+            userId,
+            User.GetTenantId(),
+            request.FullName,
+            request.PhoneNumber,
+            request.JobTitle,
+            cancel);
         return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
     }
 

@@ -9,13 +9,12 @@ internal sealed class EfContractTemplateRepository(TrustSignDbContext db) : ICon
 {
     public async Task<IReadOnlyList<ContractTemplate>> ListByTenantAsync(Guid tenantId, CancellationToken cancel) =>
         await db.ContractTemplates
-            .Where(tpl => tpl.TenantId == tenantId)
-            .OrderByDescending(tpl => tpl.UpdatedAt)
+            .Where(t => t.TenantId == tenantId)
+            .OrderByDescending(t => t.UpdatedAt)
             .ToListAsync(cancel);
 
     public Task<ContractTemplate?> FindByIdAsync(Guid tenantId, Guid templateId, CancellationToken cancel) =>
-        db.ContractTemplates
-            .FirstOrDefaultAsync(tpl => tpl.Id == templateId && tpl.TenantId == tenantId, cancel);
+        db.ContractTemplates.FirstOrDefaultAsync(t => t.Id == templateId && t.TenantId == tenantId, cancel);
 
     public async Task AddAsync(ContractTemplate template, CancellationToken cancel)
     {
@@ -70,6 +69,11 @@ internal sealed class EfContractRepository(TrustSignDbContext db) : IContractRep
             .Include(c => c.Signers)
             .FirstOrDefaultAsync(c => c.Id == contractId && c.TenantId == tenantId, cancel);
 
+    public Task<Contract?> FindByIdAsync(Guid contractId, CancellationToken cancel) =>
+        db.Contracts
+            .Include(c => c.Signers)
+            .FirstOrDefaultAsync(c => c.Id == contractId, cancel);
+
     public Task<bool> CodeExistsAsync(string code, CancellationToken cancel) =>
         db.Contracts.AnyAsync(c => c.Code == code, cancel);
 
@@ -91,6 +95,12 @@ internal sealed class EfContractRepository(TrustSignDbContext db) : IContractRep
         db.ContractSigners.AddRange(newSigners);
         await db.SaveChangesAsync(cancel);
     }
+
+    public Task<int> ExpireDueAsync(DateTimeOffset now, CancellationToken cancel) =>
+        db.Contracts
+            .Where(c => (c.Status == ContractStatus.Pending || c.Status == ContractStatus.Signing) &&
+                        c.DueAt != null && c.DueAt <= now)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Status, ContractStatus.Expired), cancel);
 
     public Task SaveChangesAsync(CancellationToken cancel) => db.SaveChangesAsync(cancel);
 }

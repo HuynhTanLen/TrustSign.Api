@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Mail;
 using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Common;
@@ -12,6 +11,7 @@ namespace TrustSign.Application.Modules.Identity;
 internal sealed class AuthService(
     IUserRepository users,
     IEmailVerificationTokenRepository verificationTokens,
+    IPasswordResetTokenRepository passwordResetTokens,
     IRefreshTokenRepository refreshTokens,
     ITenantRepository tenants,
     IPasswordHasher passwordHasher,
@@ -21,22 +21,35 @@ internal sealed class AuthService(
     IOptions<SmtpOptions> smtpOptions,
     TimeProvider timeProvider) : IAuthService
 {
+    public const int MinPasswordLength = 8;
+    public static readonly TimeSpan PasswordResetTokenLifetime = TimeSpan.FromMinutes(30);
+
     private readonly JwtOptions _jwtOptions = jwtOptions.Value;
     private readonly SmtpOptions _smtpOptions = smtpOptions.Value;
 
     public async Task<Result<RegisterResultDto>> RegisterAsync(RegisterRequestDto request, CancellationToken cancel)
     {
+        if (!request.AcceptTerms)
+        {
+            return IdentityErrors.TermsMustBeAccepted;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.PhoneNumber) && !PhoneValidator.IsValid(request.PhoneNumber))
+        {
+            return IdentityErrors.InvalidPhoneNumber;
+        }
+
         if (string.IsNullOrWhiteSpace(request.FullName) || request.FullName.Trim().Length > 100)
         {
             return IdentityErrors.InvalidFullName;
         }
 
-        if (!IsValidEmail(request.Email))
+        if (!EmailValidator.IsValid(request.Email))
         {
             return IdentityErrors.InvalidEmail;
         }
 
-        if (string.IsNullOrEmpty(request.Password) || request.Password.Length < 8)
+        if (!IsAcceptablePassword(request.Password))
         {
             return IdentityErrors.WeakPassword;
         }
@@ -49,7 +62,14 @@ internal sealed class AuthService(
 
         DateTimeOffset now = timeProvider.GetUtcNow();
         string passwordHash = passwordHasher.Hash(request.Password);
-        User user = User.Register(request.Email, request.FullName, passwordHash, now);
+        User user = User.Register(
+            request.Email,
+            request.FullName,
+            passwordHash,
+            now,
+            request.PhoneNumber,
+            now,
+            User.DefaultTermsVersion);
         await users.AddAsync(user, cancel);
 
         await IssueAndSendVerificationEmailAsync(user, now, cancel);
@@ -94,7 +114,7 @@ internal sealed class AuthService(
 
     public async Task<Result<ActionMessageDto>> ResendVerificationAsync(string email, CancellationToken cancel)
     {
-        if (IsValidEmail(email))
+        if (EmailValidator.IsValid(email))
         {
             User? user = await users.FindByEmailAsync(email, cancel);
             if (user is not null && user.Status == UserStatus.Pending)
@@ -155,19 +175,7 @@ internal sealed class AuthService(
 
         await refreshTokens.AddAsync(refresh, cancel);
 
-        TenantClaimContext? tenantClaim = active is null
-            ? null
-            : new TenantClaimContext(active.Tenant.Id, active.Membership.Role, active.Tenant.Status);
-
-        AccessTokenDto access = tokenIssuer.Issue(user.Id, refresh.SessionId, user.Role, tenantClaim);
-        UserProfileDto profile = user.ToProfileDto(memberships, active?.Tenant.Id);
-
-        return new AuthSessionResultDto(
-            access.AccessToken,
-            access.ExpiresAt,
-            rawRefresh,
-            refresh.ExpiresAt,
-            profile);
+        return IssueSessionResult(user, refresh.SessionId, rawRefresh, refresh.ExpiresAt, memberships, active);
     }
 
     public async Task<Result<AuthSessionResultDto>> RefreshAsync(string? rawRefreshToken, CancellationToken cancel)
@@ -223,19 +231,7 @@ internal sealed class AuthService(
 
         await refreshTokens.AddAsync(rotated, cancel);
 
-        TenantClaimContext? tenantClaim = active is null
-            ? null
-            : new TenantClaimContext(active.Tenant.Id, active.Membership.Role, active.Tenant.Status);
-
-        AccessTokenDto access = tokenIssuer.Issue(user.Id, rotated.SessionId, user.Role, tenantClaim);
-        UserProfileDto profile = user.ToProfileDto(memberships, active?.Tenant.Id);
-
-        return new AuthSessionResultDto(
-            access.AccessToken,
-            access.ExpiresAt,
-            nextRaw,
-            rotated.ExpiresAt,
-            profile);
+        return IssueSessionResult(user, rotated.SessionId, nextRaw, rotated.ExpiresAt, memberships, active);
     }
 
     public async Task LogoutAsync(string? rawRefreshToken, CancellationToken cancel)
@@ -251,6 +247,171 @@ internal sealed class AuthService(
         {
             await refreshTokens.RevokeSessionAsync(existing.SessionId, timeProvider.GetUtcNow(), cancel);
         }
+    }
+
+    public async Task<Result<ActionMessageDto>> ForgotPasswordAsync(string email, CancellationToken cancel)
+    {
+        if (EmailValidator.IsValid(email))
+        {
+            User? user = await users.FindByEmailAsync(email, cancel);
+            if (user is not null && user.Status == UserStatus.Active)
+            {
+                DateTimeOffset now = timeProvider.GetUtcNow();
+
+                // Chỉ link mới nhất còn hiệu lực, link cũ (nếu có) bị vô hiệu hóa.
+                await passwordResetTokens.InvalidateAllForUserAsync(user.Id, now, cancel);
+
+                (string rawToken, string tokenHash) = TokenGenerator.GeneratePair();
+                PasswordResetToken reset = PasswordResetToken.Create(user.Id, tokenHash, now, PasswordResetTokenLifetime);
+                await passwordResetTokens.AddAsync(reset, cancel);
+
+                await SendPasswordResetEmailAsync(user, rawToken, cancel);
+            }
+        }
+
+        return new ActionMessageDto(
+            true,
+            "Nếu email thuộc một tài khoản đang hoạt động, hướng dẫn đặt lại mật khẩu đã được gửi tới hộp thư.");
+    }
+
+    public async Task<Result<ActionMessageDto>> ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken cancel)
+    {
+        if (string.IsNullOrWhiteSpace(request.Token))
+        {
+            return IdentityErrors.PasswordResetTokenInvalid;
+        }
+
+        if (!IsAcceptablePassword(request.NewPassword))
+        {
+            return IdentityErrors.WeakPassword;
+        }
+
+        string tokenHash = TokenGenerator.HashToken(request.Token.Trim());
+        PasswordResetToken? token = await passwordResetTokens.FindByTokenHashAsync(tokenHash, cancel);
+        if (token is null)
+        {
+            return IdentityErrors.PasswordResetTokenInvalid;
+        }
+
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        if (!token.IsUsable(now))
+        {
+            return IdentityErrors.PasswordResetTokenInvalid;
+        }
+
+        User? user = await users.FindByIdAsync(token.UserId, cancel);
+        if (user is null || user.Status != UserStatus.Active)
+        {
+            return IdentityErrors.PasswordResetTokenInvalid;
+        }
+
+        Result consume = token.Consume(now);
+        if (consume.IsFailure)
+        {
+            return consume.Error;
+        }
+
+        user.ResetPassword(passwordHasher.Hash(request.NewPassword));
+        await users.SaveChangesAsync(cancel);
+
+        // Đổi mật khẩu bằng email thì mọi phiên đăng nhập cũ (có thể của kẻ gian) đều bị thu hồi.
+        await refreshTokens.RevokeAllForUserAsync(user.Id, now, cancel);
+        await passwordResetTokens.InvalidateAllForUserAsync(user.Id, now, cancel);
+
+        return new ActionMessageDto(true, "Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.");
+    }
+
+    public async Task<Result<ActionMessageDto>> ChangePasswordAsync(
+        Guid userId,
+        Guid? currentSessionId,
+        ChangePasswordRequestDto request,
+        CancellationToken cancel)
+    {
+        User? user = await users.FindByIdAsync(userId, cancel);
+        if (user is null)
+        {
+            return IdentityErrors.SessionInvalid;
+        }
+
+        if (string.IsNullOrEmpty(request.CurrentPassword) ||
+            !passwordHasher.Verify(request.CurrentPassword, user.PasswordHash))
+        {
+            return IdentityErrors.CurrentPasswordIncorrect;
+        }
+
+        if (!IsAcceptablePassword(request.NewPassword))
+        {
+            return IdentityErrors.WeakPassword;
+        }
+
+        if (string.Equals(request.CurrentPassword, request.NewPassword, StringComparison.Ordinal))
+        {
+            return IdentityErrors.PasswordUnchanged;
+        }
+
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        user.ChangePassword(passwordHasher.Hash(request.NewPassword));
+        await users.SaveChangesAsync(cancel);
+
+        await refreshTokens.RevokeOtherSessionsAsync(user.Id, currentSessionId, now, cancel);
+
+        return new ActionMessageDto(true, "Đổi mật khẩu thành công. Các phiên đăng nhập khác đã bị đăng xuất.");
+    }
+
+    private static bool IsAcceptablePassword(string? password) =>
+        !string.IsNullOrWhiteSpace(password) &&
+        password.Length >= MinPasswordLength &&
+        password.Any(char.IsLetter) &&
+        password.Any(char.IsDigit);
+
+    private async Task SendPasswordResetEmailAsync(User user, string rawToken, CancellationToken cancel)
+    {
+        string baseUrl = _smtpOptions.FrontendBaseUrl.TrimEnd('/');
+        string resetUrl = $"{baseUrl}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+        string safeName = WebUtility.HtmlEncode(user.FullName);
+        int minutes = (int)PasswordResetTokenLifetime.TotalMinutes;
+
+        string html = $"""
+            <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2328;line-height:1.6;">
+              <h2 style="color:#1b3a5c;margin-bottom:12px;">Chữ Tín (TrustSign) – Đặt lại mật khẩu</h2>
+              <p>Xin chào <strong>{safeName}</strong>,</p>
+              <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn. Nhấn vào nút bên dưới để đặt mật khẩu mới:</p>
+              <p style="margin:24px 0;">
+                <a href="{resetUrl}" style="background:#1b3a5c;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:4px;display:inline-block;font-weight:600;">
+                  Đặt lại mật khẩu
+                </a>
+              </p>
+              <p style="font-size:13px;color:#5f6b7a;">Hoặc mở trực tiếp đường dẫn: <a href="{resetUrl}">{resetUrl}</a></p>
+              <p style="font-size:12px;color:#5f6b7a;">Liên kết có hiệu lực trong {minutes} phút và chỉ sử dụng một lần. Nếu bạn không yêu cầu, hãy bỏ qua email này; mật khẩu hiện tại vẫn giữ nguyên.</p>
+            </div>
+            """;
+
+        await emailSender.SendAsync(
+            new EmailMessage(user.Email, "[Chữ Tín] Đặt lại mật khẩu tài khoản", html),
+            cancel);
+    }
+
+    private AuthSessionResultDto IssueSessionResult(
+        User user,
+        Guid sessionId,
+        string rawRefresh,
+        DateTimeOffset refreshExpiresAt,
+        IReadOnlyList<UserTenantMembership> memberships,
+        UserTenantMembership? active)
+    {
+        TenantClaimContext? tenantClaim = active is null
+            ? null
+            : new TenantClaimContext(active.Tenant.Id, active.Membership.Role, active.Tenant.Status);
+
+        AccessTokenDto access = tokenIssuer.Issue(user.Id, sessionId, user.Role, tenantClaim);
+        UserProfileDto profile = user.ToProfileDto(memberships, active?.Tenant.Id);
+
+        return new AuthSessionResultDto(
+            access.AccessToken,
+            access.ExpiresAt,
+            rawRefresh,
+            refreshExpiresAt,
+            profile);
     }
 
     private async Task IssueAndSendVerificationEmailAsync(User user, DateTimeOffset now, CancellationToken cancel)
@@ -303,16 +464,5 @@ internal sealed class AuthService(
 
         return memberships.FirstOrDefault(item => item.Tenant.Status == TenantStatus.Active)
             ?? memberships.FirstOrDefault();
-    }
-
-    private static bool IsValidEmail(string? email)
-    {
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return false;
-        }
-
-        string trimmed = email.Trim();
-        return trimmed.Length <= 254 && MailAddress.TryCreate(trimmed, out MailAddress? parsed) && parsed.Address == trimmed;
     }
 }

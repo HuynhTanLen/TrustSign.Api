@@ -60,6 +60,10 @@ internal sealed class ContractSignerConfiguration : IEntityTypeConfiguration<Con
         builder.HasIndex(signer => new { signer.ContractId, signer.SignOrder }).IsUnique();
         builder.Property(signer => signer.FullName).HasMaxLength(100);
         builder.Property(signer => signer.Email).HasMaxLength(254);
+        builder.Property(signer => signer.Role).HasConversion<string>().HasMaxLength(20);
+        builder.Property(signer => signer.Phone).HasMaxLength(32);
+        builder.Property(signer => signer.Organization).HasMaxLength(200);
+        builder.Property(signer => signer.Title).HasMaxLength(100);
         builder.Property(signer => signer.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(signer => signer.DeclineReason).HasMaxLength(500);
     }

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -67,17 +67,13 @@ internal sealed class ContractService(
         Guid contractId,
         CancellationToken cancel = default)
     {
-        Contract? contract = await contracts.FindByIdAsync(tenantId, contractId, cancel);
-        if (contract is null)
+        Result<Contract> accessResult = await GetAuthorizedContractAsync(tenantId, actorUserId, actorRole, contractId, cancel);
+        if (accessResult.IsFailure)
         {
-            return ContractErrors.ContractNotFound;
+            return accessResult.Error;
         }
 
-        if (actorRole == TenantRole.Employee && contract.CreatedByUserId != actorUserId)
-        {
-            return IdentityErrors.TenantAccessDenied;
-        }
-
+        Contract contract = accessResult.Value;
         DateTimeOffset now = timeProvider.GetUtcNow();
         string documentUrl = fileStorage.CreateShortLivedDocumentUrl(tenantId, contract.Id, now);
 
@@ -94,7 +90,11 @@ internal sealed class ContractService(
                 s.BoxX,
                 s.BoxY,
                 s.BoxWidth,
-                s.BoxHeight))
+                s.BoxHeight,
+                s.Role.ToString(),
+                s.Phone,
+                s.Organization,
+                s.Title))
             .ToList();
 
         ContractListItemDto summary = ToListItemDto(contract);
@@ -112,8 +112,8 @@ internal sealed class ContractService(
             summary.CurrentSigner,
             signerDtos,
             Signatures: [],
-            Events: events,
-            DocumentUrl: documentUrl);
+            events,
+            documentUrl);
     }
 
     public async Task<Result<CreatedContractResponseDto>> CreateFromTemplateAsync(
@@ -122,7 +122,8 @@ internal sealed class ContractService(
         CreateFromTemplateRequestDto request,
         CancellationToken cancel = default)
     {
-        if (string.IsNullOrWhiteSpace(request.Title) || request.Title.Trim().Length > 200)
+        string trimmedTitle = request.Title?.Trim() ?? string.Empty;
+        if (trimmedTitle.Length is 0 or > 200)
         {
             return ContractErrors.InvalidContractTitle;
         }
@@ -140,43 +141,23 @@ internal sealed class ContractService(
         }
 
         DateTimeOffset now = timeProvider.GetUtcNow();
-        Guid contractId = Guid.CreateVersion7(now);
         string code = await GenerateUniqueContractCodeAsync(now, cancel);
 
         byte[] pdfBytes = pdfGenerator.RenderTemplateToPdf(
-            request.Title.Trim(),
+            trimmedTitle,
             code,
             renderResult.Value,
             now);
 
-        string sha256Hex = Convert.ToHexStringLower(SHA256.HashData(pdfBytes));
-        string storageKey = $"tenants/{tenantId:D}/contracts/{contractId:D}/original.pdf";
-
-        User? creator = await users.FindByIdAsync(userId, cancel);
-        string creatorName = creator?.FullName ?? "Thành viên";
-
-        Result<Contract> draftResult = Contract.CreateDraft(
-            contractId,
+        return await PersistDraftAsync(
             tenantId,
-            code,
-            request.Title,
-            template.Id,
-            storageKey,
-            sha256Hex,
-            pdfBytes.LongLength,
             userId,
-            creatorName,
-            now);
-
-        if (draftResult.IsFailure)
-        {
-            return draftResult.Error;
-        }
-
-        await fileStorage.SaveAsync(storageKey, pdfBytes, cancel);
-        await contracts.AddAsync(draftResult.Value, cancel);
-
-        return new CreatedContractResponseDto(contractId);
+            trimmedTitle,
+            template.Id,
+            code,
+            pdfBytes,
+            now,
+            cancel);
     }
 
     public async Task<Result<CreatedContractResponseDto>> UploadDraftAsync(
@@ -186,47 +167,29 @@ internal sealed class ContractService(
         ReadOnlyMemory<byte> pdfBytes,
         CancellationToken cancel = default)
     {
-        if (string.IsNullOrWhiteSpace(title) || title.Trim().Length > 200)
+        string trimmedTitle = title?.Trim() ?? string.Empty;
+        if (trimmedTitle.Length is 0 or > 200)
         {
             return ContractErrors.InvalidContractTitle;
         }
 
-        if (!IsValidPdf(pdfBytes.Span))
+        if (pdfBytes.IsEmpty || !IsValidPdf(pdfBytes.Span))
         {
             return ContractErrors.InvalidPdfFile;
         }
 
         DateTimeOffset now = timeProvider.GetUtcNow();
-        Guid contractId = Guid.CreateVersion7(now);
         string code = await GenerateUniqueContractCodeAsync(now, cancel);
-        string sha256Hex = Convert.ToHexStringLower(SHA256.HashData(pdfBytes.Span));
-        string storageKey = $"tenants/{tenantId:D}/contracts/{contractId:D}/original.pdf";
 
-        User? creator = await users.FindByIdAsync(userId, cancel);
-        string creatorName = creator?.FullName ?? "Thành viên";
-
-        Result<Contract> draftResult = Contract.CreateDraft(
-            contractId,
+        return await PersistDraftAsync(
             tenantId,
-            code,
-            title,
-            templateId: null,
-            storageKey,
-            sha256Hex,
-            pdfBytes.Length,
             userId,
-            creatorName,
-            now);
-
-        if (draftResult.IsFailure)
-        {
-            return draftResult.Error;
-        }
-
-        await fileStorage.SaveAsync(storageKey, pdfBytes, cancel);
-        await contracts.AddAsync(draftResult.Value, cancel);
-
-        return new CreatedContractResponseDto(contractId);
+            trimmedTitle,
+            templateId: null,
+            code,
+            pdfBytes,
+            now,
+            cancel);
     }
 
     public async Task<Result> SetSignersAsync(
@@ -237,17 +200,13 @@ internal sealed class ContractService(
         SetSignersRequestDto request,
         CancellationToken cancel = default)
     {
-        Contract? contract = await contracts.FindByIdAsync(tenantId, contractId, cancel);
-        if (contract is null)
+        Result<Contract> accessResult = await GetAuthorizedContractAsync(tenantId, actorUserId, actorRole, contractId, cancel);
+        if (accessResult.IsFailure)
         {
-            return ContractErrors.ContractNotFound;
+            return accessResult.Error;
         }
 
-        if (actorRole == TenantRole.Employee && contract.CreatedByUserId != actorUserId)
-        {
-            return IdentityErrors.TenantAccessDenied;
-        }
-
+        Contract contract = accessResult.Value;
         IReadOnlyList<SetSignerItemDto> items = request.Signers ?? [];
         List<ContractSignerSpec> specs = items
             .OrderBy(s => s.Order ?? int.MaxValue)
@@ -258,7 +217,11 @@ internal sealed class ContractService(
                 s.BoxX,
                 s.BoxY,
                 s.BoxWidth,
-                s.BoxHeight))
+                s.BoxHeight,
+                s.Role,
+                s.Phone,
+                s.Organization,
+                s.Title))
             .ToList();
 
         DateTimeOffset now = timeProvider.GetUtcNow();
@@ -268,7 +231,7 @@ internal sealed class ContractService(
             return setResult.Error;
         }
 
-        await contracts.ReplaceSignersAsync(contract, contract.Signers.ToList(), cancel);
+        await contracts.ReplaceSignersAsync(contract, contract.Signers, cancel);
         return Result.Success();
     }
 
@@ -280,20 +243,15 @@ internal sealed class ContractService(
         SendContractRequestDto request,
         CancellationToken cancel = default)
     {
-        Contract? contract = await contracts.FindByIdAsync(tenantId, contractId, cancel);
-        if (contract is null)
+        Result<Contract> accessResult = await GetAuthorizedContractAsync(tenantId, actorUserId, actorRole, contractId, cancel);
+        if (accessResult.IsFailure)
         {
-            return ContractErrors.ContractNotFound;
+            return accessResult.Error;
         }
 
-        if (actorRole == TenantRole.Employee && contract.CreatedByUserId != actorUserId)
-        {
-            return IdentityErrors.TenantAccessDenied;
-        }
-
+        Contract contract = accessResult.Value;
         DateTimeOffset now = timeProvider.GetUtcNow();
 
-        // Gửi ký + trừ hạn mức trong cùng một database transaction (CON-06, TC15, TC21).
         // Nếu hết hạn mức hoặc thuê bao hết hạn, transaction rollback để hợp đồng vẫn ở trạng thái Nháp.
         Result txResult = await unitOfWork.ExecuteInTransactionAsync(async () =>
         {
@@ -318,8 +276,12 @@ internal sealed class ContractService(
             return txResult.Error;
         }
 
-        // Gửi email thông báo cho người ký đầu tiên
-        ContractSigner? firstSigner = contract.Signers.OrderBy(s => s.SignOrder).FirstOrDefault();
+        // Gửi email thông báo cho người ký/duyệt đầu tiên (bỏ qua Cc)
+        ContractSigner? firstSigner = contract.Signers
+            .Where(s => s.Role != RecipientRole.Cc)
+            .OrderBy(s => s.SignOrder)
+            .FirstOrDefault();
+
         if (firstSigner is not null)
         {
             await TrySendFirstSignerNotificationAsync(contract, firstSigner, cancel);
@@ -335,17 +297,13 @@ internal sealed class ContractService(
         Guid contractId,
         CancellationToken cancel = default)
     {
-        Contract? contract = await contracts.FindByIdAsync(tenantId, contractId, cancel);
-        if (contract is null)
+        Result<Contract> accessResult = await GetAuthorizedContractAsync(tenantId, actorUserId, actorRole, contractId, cancel);
+        if (accessResult.IsFailure)
         {
-            return ContractErrors.ContractNotFound;
+            return accessResult.Error;
         }
 
-        if (actorRole == TenantRole.Employee && contract.CreatedByUserId != actorUserId)
-        {
-            return IdentityErrors.TenantAccessDenied;
-        }
-
+        Contract contract = accessResult.Value;
         DateTimeOffset now = timeProvider.GetUtcNow();
         Result cancelResult = contract.Cancel(now);
         if (cancelResult.IsFailure)
@@ -384,6 +342,126 @@ internal sealed class ContractService(
         return bytes;
     }
 
+    public async Task<Result> ProcessSignOrApproveAsync(
+        Guid contractId,
+        Guid signerId,
+        CancellationToken cancel = default)
+    {
+        Contract? contract = await contracts.FindByIdAsync(contractId, cancel);
+        if (contract is null)
+        {
+            return ContractErrors.ContractNotFound;
+        }
+
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        Result advance = contract.SignOrApproveCurrent(signerId, now);
+        if (advance.IsFailure)
+        {
+            return advance.Error;
+        }
+
+        if (contract.Status == ContractStatus.Completed)
+        {
+            await NotifyCcRecipientsAsync(contract, cancel);
+        }
+        else if (contract.Status == ContractStatus.Signing)
+        {
+            ContractSigner? current = contract.Signers.FirstOrDefault(s => s.Status == SignerStatus.Current);
+            if (current is not null)
+            {
+                await TrySendFirstSignerNotificationAsync(contract, current, cancel);
+            }
+        }
+
+        await contracts.SaveChangesAsync(cancel);
+        return Result.Success();
+    }
+
+    public async Task<Result> DeclineAsync(
+        Guid contractId,
+        Guid signerId,
+        string reason,
+        CancellationToken cancel = default)
+    {
+        Contract? contract = await contracts.FindByIdAsync(contractId, cancel);
+        if (contract is null)
+        {
+            return ContractErrors.ContractNotFound;
+        }
+
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        Result decline = contract.DeclineCurrent(signerId, reason, now);
+        if (decline.IsFailure)
+        {
+            return decline.Error;
+        }
+
+        await contracts.SaveChangesAsync(cancel);
+        return Result.Success();
+    }
+
+    private async Task<Result<Contract>> GetAuthorizedContractAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        TenantRole actorRole,
+        Guid contractId,
+        CancellationToken cancel)
+    {
+        Contract? contract = await contracts.FindByIdAsync(tenantId, contractId, cancel);
+        if (contract is null)
+        {
+            return ContractErrors.ContractNotFound;
+        }
+
+        if (actorRole == TenantRole.Employee && contract.CreatedByUserId != actorUserId)
+        {
+            return IdentityErrors.TenantAccessDenied;
+        }
+
+        return contract;
+    }
+
+    private async Task<Result<CreatedContractResponseDto>> PersistDraftAsync(
+        Guid tenantId,
+        Guid userId,
+        string title,
+        Guid? templateId,
+        string code,
+        ReadOnlyMemory<byte> pdfBytes,
+        DateTimeOffset now,
+        CancellationToken cancel)
+    {
+        Guid contractId = Guid.CreateVersion7(now);
+        string sha256Hex = Convert.ToHexStringLower(SHA256.HashData(pdfBytes.Span));
+        string storageKey = $"tenants/{tenantId:D}/contracts/{contractId:D}/original.pdf";
+
+        User? creator = await users.FindByIdAsync(userId, cancel);
+        string creatorName = creator?.FullName ?? "Thành viên";
+
+        Result<Contract> draftResult = Contract.CreateDraft(
+            contractId,
+            tenantId,
+            code,
+            title,
+            templateId,
+            storageKey,
+            sha256Hex,
+            pdfBytes.Length,
+            userId,
+            creatorName,
+            now);
+
+        if (draftResult.IsFailure)
+        {
+            return draftResult.Error;
+        }
+
+        await fileStorage.SaveAsync(storageKey, pdfBytes, cancel);
+        await contracts.AddAsync(draftResult.Value, cancel);
+
+        return new CreatedContractResponseDto(contractId);
+    }
+
     private async Task TrySendFirstSignerNotificationAsync(
         Contract contract,
         ContractSigner firstSigner,
@@ -394,25 +472,74 @@ internal sealed class ContractService(
             string baseUrl = _smtpOptions.FrontendBaseUrl.TrimEnd('/');
             string safeTitle = WebUtility.HtmlEncode(contract.Title);
             string safeSigner = WebUtility.HtmlEncode(firstSigner.FullName);
+            string roleLabel = firstSigner.Role == RecipientRole.Approver ? "duyệt" : "ký";
+            string signingToken = fileStorage.CreateSigningToken(contract.Id, firstSigner.Id, timeProvider.GetUtcNow());
+            string signUrl = $"{baseUrl}/sign/{Uri.EscapeDataString(signingToken)}";
 
             string html = $"""
                 <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2328;line-height:1.6;">
-                  <h2 style="color:#1f5fa8;margin-bottom:12px;">Yêu cầu ký hợp đồng điện tử</h2>
+                  <h2 style="color:#1b3a5c;margin-bottom:12px;">Yêu cầu {roleLabel} hợp đồng điện tử</h2>
                   <p>Xin chào <strong>{safeSigner}</strong>,</p>
-                  <p>Bạn được mời ký hợp đồng <strong>{safeTitle}</strong> (Mã: <code>{contract.Code}</code>) trên nền tảng Chữ Tín (TrustSign).</p>
-                  <p>Hạn ký: <strong>{contract.DueAt:dd/MM/yyyy HH:mm}</strong></p>
+                  <p>Bạn được mời {roleLabel} hợp đồng <strong>{safeTitle}</strong> (Mã: <code>{contract.Code}</code>) trên nền tảng Chữ Tín (TrustSign).</p>
+                  <p>Hạn xử lý: <strong>{contract.DueAt:dd/MM/yyyy HH:mm}</strong></p>
+                  <p style="margin:24px 0;">
+                    <a href="{signUrl}" style="background:#1b3a5c;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:4px;display:inline-block;font-weight:600;">
+                      Xem và {roleLabel} hợp đồng
+                    </a>
+                  </p>
+                  <p style="font-size:13px;color:#5f6b7a;">Hoặc mở trực tiếp: <a href="{signUrl}">{signUrl}</a></p>
                   <p style="font-size:13px;color:#5f6b7a;">Mã băm SHA-256 gốc: <code>{contract.OriginalFileHash}</code></p>
                   <p style="font-size:12px;color:#5f6b7a;">Hệ thống hợp đồng điện tử Chữ Tín ({baseUrl}).</p>
                 </div>
                 """;
 
             await emailSender.SendAsync(
-                new EmailMessage(firstSigner.Email, $"[Chữ Tín] Mời ký hợp đồng {contract.Code} - {contract.Title}", html),
+                new EmailMessage(firstSigner.Email, $"[Chữ Tín] Mời {roleLabel} hợp đồng {contract.Code} - {contract.Title}", html),
                 cancel);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Không gửi được email mời ký hợp đồng {ContractCode} tới {Email}", contract.Code, firstSigner.Email);
+            logger.LogWarning(ex, "Không gửi được email mời ký/duyệt hợp đồng {ContractCode} tới {Email}", contract.Code, firstSigner.Email);
+        }
+    }
+
+    private async Task NotifyCcRecipientsAsync(Contract contract, CancellationToken cancel)
+    {
+        var ccSigners = contract.Signers.Where(s => s.Role == RecipientRole.Cc).ToList();
+        if (ccSigners.Count == 0) return;
+
+        string baseUrl = _smtpOptions.FrontendBaseUrl.TrimEnd('/');
+        string viewUrl = $"{baseUrl}/app/contracts/{contract.Id}";
+        string safeTitle = WebUtility.HtmlEncode(contract.Title);
+
+        foreach (ContractSigner cc in ccSigners)
+        {
+            try
+            {
+                string safeName = WebUtility.HtmlEncode(cc.FullName);
+                string html = $"""
+                    <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2328;line-height:1.6;">
+                      <h2 style="color:#1b3a5c;margin-bottom:12px;">Hợp đồng điện tử đã hoàn tất</h2>
+                      <p>Xin chào <strong>{safeName}</strong>,</p>
+                      <p>Hợp đồng <strong>{safeTitle}</strong> (Mã: <code>{contract.Code}</code>) mà bạn được chỉ định nhận bản sao (Cc) đã được tất cả các bên ký duyệt hoàn tất.</p>
+                      <p style="margin:24px 0;">
+                        <a href="{viewUrl}" style="background:#1b3a5c;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:4px;display:inline-block;font-weight:600;">
+                          Xem hợp đồng đã hoàn tất
+                        </a>
+                      </p>
+                      <p style="font-size:13px;color:#5f6b7a;">Hoặc mở trực tiếp: <a href="{viewUrl}">{viewUrl}</a></p>
+                      <p style="font-size:12px;color:#5f6b7a;">Hệ thống hợp đồng điện tử Chữ Tín ({baseUrl}).</p>
+                    </div>
+                    """;
+
+                await emailSender.SendAsync(
+                    new EmailMessage(cc.Email, $"[Chữ Tín] Bản sao hợp đồng hoàn tất: {contract.Code} - {contract.Title}", html),
+                    cancel);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Không gửi được email thông báo hoàn tất tới người nhận Cc {Email}", cc.Email);
+            }
         }
     }
 
@@ -428,7 +555,9 @@ internal sealed class ContractService(
             }
         }
 
-        return $"HD-{now:yyyy}-{now.ToUnixTimeMilliseconds() % 100000:D5}";
+        // Fallback không gian số lớn hơn kèm kiểm tra va chạm
+        int fallbackNum = RandomNumberGenerator.GetInt32(10000, 999999);
+        return $"HD-{now:yyyy}-{fallbackNum}";
     }
 
     private static bool IsValidPdf(ReadOnlySpan<byte> bytes) =>

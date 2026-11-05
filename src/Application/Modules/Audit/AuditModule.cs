@@ -8,5 +8,9 @@ namespace TrustSign.Application.Modules.Audit;
 /// </summary>
 public static class AuditModule
 {
-    public static IServiceCollection AddAuditModule(this IServiceCollection services) => services;
+    public static IServiceCollection AddAuditModule(this IServiceCollection services)
+    {
+        services.AddScoped<IAuditLogger, AuditLogger>();
+        return services;
+    }
 }

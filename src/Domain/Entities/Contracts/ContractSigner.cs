@@ -3,7 +3,8 @@ using TrustSign.Common.Enums;
 namespace TrustSign.Domain.Entities.Contracts;
 
 /// <summary>
-/// Người ký hợp đồng theo thứ tự tuần tự 1..5 (F03, F04) kèm vị trí ô chữ ký trên trang PDF.
+/// Người nhận trong quy trình hợp đồng (Signer, Approver, Cc) theo thứ tự tuần tự (F03, F04)
+/// kèm vị trí ô chữ ký trên trang PDF (đối với Signer).
 /// </summary>
 public sealed class ContractSigner
 {
@@ -21,9 +22,17 @@ public sealed class ContractSigner
 
     public string Email { get; private set; } = null!;
 
+    public RecipientRole Role { get; private set; }
+
+    public string? Phone { get; private set; }
+
+    public string? Organization { get; private set; }
+
+    public string? Title { get; private set; }
+
     public SignerStatus Status { get; private set; }
 
-    /// <summary>Trang PDF đặt ô chữ ký (đánh số từ 1).</summary>
+    /// <summary>Trang PDF đặt ô chữ ký (đánh số từ 1). Với Approver hoặc Cc có thể là 1 hoặc mặc định.</summary>
     public int PageNumber { get; private set; }
 
     /// <summary>Tọa độ X (pt, gốc trái-dưới chuẩn PDF) của ô chữ ký.</summary>
@@ -50,13 +59,21 @@ public sealed class ContractSigner
         float boxY,
         float boxWidth,
         float boxHeight,
-        DateTimeOffset now) => new()
+        DateTimeOffset now,
+        RecipientRole role = RecipientRole.Signer,
+        string? phone = null,
+        string? organization = null,
+        string? title = null) => new()
     {
         Id = Guid.CreateVersion7(now),
         ContractId = contractId,
         SignOrder = signOrder,
         FullName = fullName.Trim(),
         Email = email.Trim().ToLowerInvariant(),
+        Role = role,
+        Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim(),
+        Organization = string.IsNullOrWhiteSpace(organization) ? null : organization.Trim(),
+        Title = string.IsNullOrWhiteSpace(title) ? null : title.Trim(),
         Status = SignerStatus.Waiting,
         PageNumber = pageNumber,
         BoxX = boxX,

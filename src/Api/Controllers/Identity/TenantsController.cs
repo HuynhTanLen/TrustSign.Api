@@ -37,6 +37,34 @@ public sealed class TenantsController(ITenantService tenants) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
     }
 
+    [Authorize(Policy = AuthorizationPolicies.TenantMember)]
+    [HttpGet("current")]
+    public async Task<IActionResult> GetCurrent(CancellationToken cancel)
+    {
+        if (User.GetTenantId() is not { } tenantId || User.GetUserId() is not { } userId)
+        {
+            return this.ToProblem(IdentityErrors.TenantAccessDenied);
+        }
+
+        Result<TenantDto> result = await tenants.GetCurrentTenantAsync(tenantId, userId, cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.TenantOwnerOnly)]
+    [HttpPatch("current")]
+    public async Task<IActionResult> UpdateCurrent(
+        [FromBody] UpdateTenantRequestDto request,
+        CancellationToken cancel)
+    {
+        if (User.GetTenantId() is not { } tenantId || User.GetUserId() is not { } userId)
+        {
+            return this.ToProblem(IdentityErrors.TenantAccessDenied);
+        }
+
+        Result<TenantDto> result = await tenants.UpdateCurrentTenantAsync(tenantId, userId, request, cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
     [Authorize]
     [HttpPost("{tenantId:guid}/switch")]
     public async Task<IActionResult> SwitchTenant(Guid tenantId, CancellationToken cancel)

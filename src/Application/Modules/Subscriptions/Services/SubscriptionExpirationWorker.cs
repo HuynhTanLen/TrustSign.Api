@@ -58,17 +58,20 @@ public sealed class SubscriptionExpirationWorker(
         using IServiceScope scope = scopeFactory.CreateScope();
         var subscriptions = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
         var invoices = scope.ServiceProvider.GetRequiredService<IInvoiceRepository>();
+        var contracts = scope.ServiceProvider.GetRequiredService<TrustSign.Domain.IRepositories.Contracts.IContractRepository>();
 
         DateTimeOffset now = timeProvider.GetUtcNow();
         int expiredSubs = await subscriptions.ExpireDueAsync(now, cancel);
         int expiredInvoices = await invoices.ExpireDueAsync(now, cancel);
+        int expiredContracts = await contracts.ExpireDueAsync(now, cancel);
 
-        if (expiredSubs > 0 || expiredInvoices > 0)
+        if (expiredSubs > 0 || expiredInvoices > 0 || expiredContracts > 0)
         {
             logger.LogInformation(
-                "Đã quét hết hạn: {ExpiredSubs} thuê bao, {ExpiredInvoices} hóa đơn chờ.",
+                "Đã quét hết hạn: {ExpiredSubs} thuê bao, {ExpiredInvoices} hóa đơn chờ, {ExpiredContracts} hợp đồng.",
                 expiredSubs,
-                expiredInvoices);
+                expiredInvoices,
+                expiredContracts);
         }
     }
 }

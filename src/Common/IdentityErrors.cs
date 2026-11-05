@@ -30,8 +30,26 @@ public static class IdentityErrors
     public static readonly Error WeakPassword =
         Error.Validation("Auth.WeakPassword", "Mật khẩu phải có ít nhất 8 ký tự.");
 
+    public static readonly Error TermsMustBeAccepted =
+        Error.Validation("Auth.TermsMustBeAccepted", "Bạn cần đồng ý với Điều khoản sử dụng và Chính sách bảo vệ dữ liệu cá nhân (NĐ 13/2023) để đăng ký tài khoản.");
+
+    public static readonly Error InvalidPhoneNumber =
+        Error.Validation("Auth.InvalidPhoneNumber", "Số điện thoại không đúng định dạng Việt Nam (bắt đầu bằng 0 hoặc +84 và theo sau là 9 chữ số).");
+
+    public static readonly Error InvalidJobTitle =
+        Error.Validation("Auth.InvalidJobTitle", "Chức danh / chức vụ tối đa 100 ký tự.");
+
     public static readonly Error VerificationTokenInvalid =
         Error.Validation("Auth.VerificationTokenInvalid", "Liên kết xác minh không hợp lệ hoặc đã hết hạn.");
+
+    public static readonly Error PasswordResetTokenInvalid =
+        Error.Validation("Auth.PasswordResetTokenInvalid", "Liên kết đặt lại mật khẩu không hợp lệ, đã hết hạn hoặc đã được sử dụng.");
+
+    public static readonly Error CurrentPasswordIncorrect =
+        Error.Validation("Auth.CurrentPasswordIncorrect", "Mật khẩu hiện tại không đúng.");
+
+    public static readonly Error PasswordUnchanged =
+        Error.Validation("Auth.PasswordUnchanged", "Mật khẩu mới phải khác mật khẩu hiện tại.");
 
     public static readonly Error RefreshTokenInvalid =
         Error.Unauthorized("Auth.RefreshTokenInvalid", "Phiên đăng nhập không hợp lệ hoặc đã hết hạn.");
@@ -41,6 +59,15 @@ public static class IdentityErrors
 
     public static readonly Error InvalidTenantName =
         Error.Validation("Tenant.InvalidName", "Tên doanh nghiệp là bắt buộc và tối đa 200 ký tự.");
+
+    public static readonly Error InvalidTaxCode =
+        Error.Validation("Tenant.InvalidTaxCode", "Mã số thuế không hợp lệ (phải gồm 10 chữ số hoặc 13 chữ số có dấu gạch nối, ví dụ: 0101234567 hoặc 0101234567-001).");
+
+    public static readonly Error InvalidRepresentativeName =
+        Error.Validation("Tenant.InvalidRepresentativeName", "Tên người đại diện tối đa 100 ký tự.");
+
+    public static readonly Error InvalidRepresentativeTitle =
+        Error.Validation("Tenant.InvalidRepresentativeTitle", "Chức vụ người đại diện tối đa 100 ký tự.");
 
     public static readonly Error TenantNotFound =
         Error.NotFound("Tenant.NotFound", "Không tìm thấy doanh nghiệp.");

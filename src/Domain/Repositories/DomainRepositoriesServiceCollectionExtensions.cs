@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TrustSign.Domain.IRepositories;
+using TrustSign.Domain.IRepositories.Audit;
 using TrustSign.Domain.IRepositories.Contracts;
 using TrustSign.Domain.IRepositories.Identity;
 using TrustSign.Domain.IRepositories.Subscriptions;
+using TrustSign.Domain.Repositories.Audit;
 using TrustSign.Domain.Repositories.Contracts;
 using TrustSign.Domain.Repositories.Identity;
 using TrustSign.Domain.Repositories.Subscriptions;
@@ -21,6 +23,7 @@ public static class DomainRepositoriesServiceCollectionExtensions
         // Identity
         services.AddScoped<IUserRepository, EfUserRepository>();
         services.AddScoped<IEmailVerificationTokenRepository, EfEmailVerificationTokenRepository>();
+        services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
         services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
 
@@ -32,6 +35,9 @@ public static class DomainRepositoriesServiceCollectionExtensions
         // Contracts
         services.AddScoped<IContractTemplateRepository, EfContractTemplateRepository>();
         services.AddScoped<IContractRepository, EfContractRepository>();
+
+        // Audit
+        services.AddScoped<IAuditRepository, EfAuditRepository>();
 
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();
 

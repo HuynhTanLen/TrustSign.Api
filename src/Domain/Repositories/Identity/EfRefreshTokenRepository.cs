@@ -48,6 +48,20 @@ internal sealed class EfRefreshTokenRepository(TrustSignDbContext db) : IRefresh
         await db.SaveChangesAsync(cancel);
     }
 
+    public async Task RevokeOtherSessionsAsync(Guid userId, Guid? keepSessionId, DateTimeOffset now, CancellationToken cancel)
+    {
+        List<RefreshToken> tokens = await db.RefreshTokens
+            .Where(token => token.UserId == userId && token.RevokedAt == null && token.SessionId != keepSessionId)
+            .ToListAsync(cancel);
+
+        foreach (RefreshToken item in tokens)
+        {
+            item.Revoke(now);
+        }
+
+        await db.SaveChangesAsync(cancel);
+    }
+
     public Task SaveChangesAsync(CancellationToken cancel) =>
         db.SaveChangesAsync(cancel);
 }

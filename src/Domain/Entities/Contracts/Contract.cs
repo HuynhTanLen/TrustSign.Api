@@ -1,4 +1,3 @@
-using System.Net.Mail;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
 
@@ -11,7 +10,11 @@ public sealed record ContractSignerSpec(
     float? BoxX = null,
     float? BoxY = null,
     float? BoxWidth = null,
-    float? BoxHeight = null);
+    float? BoxHeight = null,
+    RecipientRole Role = RecipientRole.Signer,
+    string? Phone = null,
+    string? Organization = null,
+    string? Title = null);
 
 /// <summary>
 /// Hợp đồng điện tử thuộc một doanh nghiệp (F02–F05, F09, F22, F23).
@@ -112,8 +115,8 @@ public sealed class Contract
     }
 
     /// <summary>
-    /// Cấu hình danh sách người ký theo thứ tự 1..5 và tọa độ ô chữ ký (F03, F04).
-    /// Chỉ cho phép khi hợp đồng đang ở trạng thái Nháp.
+    /// Cấu hình danh sách người nhận theo thứ tự 1..5 và tọa độ ô chữ ký (với Signer).
+    /// Bắt buộc hợp đồng phải có ít nhất một người ký (Signer).
     /// </summary>
     public Result SetSigners(IReadOnlyList<ContractSignerSpec> specs, DateTimeOffset now)
     {
@@ -127,6 +130,11 @@ public sealed class Contract
             return ContractErrors.InvalidSigners;
         }
 
+        if (!specs.Any(s => s.Role == RecipientRole.Signer))
+        {
+            return ContractErrors.AtLeastOneSignerRequired;
+        }
+
         List<ContractSigner> built = new(specs.Count);
         for (int i = 0; i < specs.Count; i++)
         {
@@ -134,7 +142,7 @@ public sealed class Contract
             string fullName = spec.FullName?.Trim() ?? string.Empty;
             string email = spec.Email?.Trim() ?? string.Empty;
 
-            if (fullName.Length is 0 or > 100 || !IsValidEmail(email))
+            if (fullName.Length is 0 or > 100 || !EmailValidator.IsValid(email))
             {
                 return ContractErrors.InvalidSigners;
             }
@@ -150,9 +158,21 @@ public sealed class Contract
             float boxW = spec.BoxWidth ?? 180f;
             float boxH = spec.BoxHeight ?? 55f;
 
-            if (page < 1 || boxX < 0 || boxY < 0 || boxW <= 10 || boxH <= 10)
+            if (spec.Role == RecipientRole.Signer)
             {
-                return ContractErrors.InvalidSignatureBox;
+                if (page < 1 || boxX < 0 || boxY < 0 || boxW <= 10 || boxH <= 10)
+                {
+                    return ContractErrors.InvalidSignatureBox;
+                }
+            }
+            else
+            {
+                // Với Approver hoặc Cc không cần ô ký
+                page = 1;
+                boxX = 0;
+                boxY = 0;
+                boxW = 0;
+                boxH = 0;
             }
 
             built.Add(ContractSigner.Create(
@@ -165,7 +185,11 @@ public sealed class Contract
                 boxY,
                 boxW,
                 boxH,
-                now));
+                now,
+                spec.Role,
+                spec.Phone,
+                spec.Organization,
+                spec.Title));
         }
 
         _signers.Clear();
@@ -174,7 +198,8 @@ public sealed class Contract
     }
 
     /// <summary>
-    /// Chuyển hợp đồng từ Nháp sang Chờ ký, khóa nội dung và kích hoạt lượt ký của người thứ nhất (F05).
+    /// Chuyển hợp đồng từ Nháp sang Chờ ký, khóa nội dung và kích hoạt lượt của người đầu tiên
+    /// (người đầu tiên có vai trò Signer hoặc Approver, bỏ qua Cc).
     /// </summary>
     public Result MarkSent(DateTimeOffset dueAt, DateTimeOffset now)
     {
@@ -188,6 +213,11 @@ public sealed class Contract
             return ContractErrors.InvalidSigners;
         }
 
+        if (!_signers.Any(s => s.Role == RecipientRole.Signer))
+        {
+            return ContractErrors.AtLeastOneSignerRequired;
+        }
+
         if (dueAt <= now)
         {
             return ContractErrors.InvalidDueDate;
@@ -197,9 +227,94 @@ public sealed class Contract
         SentAt = now;
         DueAt = dueAt;
 
-        ContractSigner? first = _signers.OrderBy(s => s.SignOrder).FirstOrDefault();
+        // Bỏ qua người nhận vai trò Cc khi kích hoạt lượt
+        ContractSigner? first = _signers
+            .Where(s => s.Role != RecipientRole.Cc)
+            .OrderBy(s => s.SignOrder)
+            .FirstOrDefault();
+
         first?.ActivateTurn();
 
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Ký hoặc duyệt lượt hiện tại, chuyển sang người tiếp theo (bỏ qua Cc).
+    /// Nếu là người cuối cùng trong luồng ký/duyệt -> tự động chuyển trạng thái hoàn tất (Completed).
+    /// </summary>
+    public Result SignOrApproveCurrent(Guid signerId, DateTimeOffset now)
+    {
+        if (Status is not (ContractStatus.Pending or ContractStatus.Signing))
+        {
+            return ContractErrors.ContractNotEditable;
+        }
+
+        ContractSigner? current = _signers.FirstOrDefault(s => s.Id == signerId);
+        if (current is null)
+        {
+            return ContractErrors.SignerNotFound;
+        }
+
+        if (current.Status != SignerStatus.Current)
+        {
+            return ContractErrors.NotSignerTurn;
+        }
+
+        if (current.Role == RecipientRole.Cc)
+        {
+            return ContractErrors.CcCannotSignOrApprove;
+        }
+
+        current.MarkSigned(now);
+
+        // Tìm người tiếp theo trong luồng ký/duyệt (bỏ qua Cc)
+        ContractSigner? next = _signers
+            .Where(s => s.Role != RecipientRole.Cc && s.SignOrder > current.SignOrder && s.Status == SignerStatus.Waiting)
+            .OrderBy(s => s.SignOrder)
+            .FirstOrDefault();
+
+        if (next is not null)
+        {
+            Status = ContractStatus.Signing;
+            next.ActivateTurn();
+        }
+        else
+        {
+            Status = ContractStatus.Completed;
+            CompletedAt = now;
+        }
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Người ký hoặc duyệt từ chối -> hợp đồng chuyển sang Declined.
+    /// </summary>
+    public Result DeclineCurrent(Guid signerId, string reason, DateTimeOffset now)
+    {
+        if (Status is not (ContractStatus.Pending or ContractStatus.Signing))
+        {
+            return ContractErrors.ContractCannotCancel;
+        }
+
+        ContractSigner? current = _signers.FirstOrDefault(s => s.Id == signerId);
+        if (current is null)
+        {
+            return ContractErrors.SignerNotFound;
+        }
+
+        if (current.Status != SignerStatus.Current)
+        {
+            return ContractErrors.NotSignerTurn;
+        }
+
+        if (current.Role == RecipientRole.Cc)
+        {
+            return ContractErrors.CcCannotSignOrApprove;
+        }
+
+        current.MarkDeclined(reason, now);
+        Status = ContractStatus.Declined;
         return Result.Success();
     }
 
@@ -230,9 +345,4 @@ public sealed class Contract
         Status = ContractStatus.Expired;
         return true;
     }
-
-    private static bool IsValidEmail(string email) =>
-        email.Length is > 0 and <= 254 &&
-        MailAddress.TryCreate(email, out MailAddress? parsed) &&
-        parsed.Address == email;
 }

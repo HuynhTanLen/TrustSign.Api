@@ -19,5 +19,9 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.PasswordHash).HasMaxLength(512);
         builder.Property(user => user.Role).HasConversion<string>().HasMaxLength(16);
         builder.Property(user => user.Status).HasConversion<string>().HasMaxLength(16);
+
+        builder.Property(user => user.PhoneNumber).HasMaxLength(32);
+        builder.Property(user => user.JobTitle).HasMaxLength(100);
+        builder.Property(user => user.TermsVersion).HasMaxLength(32);
     }
 }

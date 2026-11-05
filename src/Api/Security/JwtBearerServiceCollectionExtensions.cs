@@ -14,10 +14,15 @@ public static class JwtBearerServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddTrustSignJwtAuthentication(this IServiceCollection services, IHostEnvironment environment)
     {
-        services.AddSingleton(provider => SigningKeyRing.Load(
-            // Đường dẫn tương đối được tính từ thư mục project Api, không phụ thuộc nơi gõ lệnh dotnet run.
-            Path.Combine(environment.ContentRootPath, provider.GetRequiredService<IOptions<JwtOptions>>().Value.PrivateKeyPath),
-            createIfMissing: environment.IsDevelopment()));
+        services.AddSingleton(provider =>
+        {
+            var config = provider.GetRequiredService<IConfiguration>();
+            var jwtOptions = provider.GetRequiredService<IOptions<JwtOptions>>().Value;
+            bool createKey = environment.IsDevelopment() || config.GetValue<bool>("Jwt:CreateKeyIfMissing");
+            return SigningKeyRing.Load(
+                Path.Combine(environment.ContentRootPath, jwtOptions.PrivateKeyPath),
+                createIfMissing: createKey);
+        });
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
         services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)

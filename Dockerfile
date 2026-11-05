@@ -21,6 +21,7 @@ COPY --from=build /app/publish ./
 
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
+RUN mkdir -p /app/keys && chown -R $APP_UID /app/keys
 USER $APP_UID
 
 ENTRYPOINT ["dotnet", "TrustSign.Api.dll"]

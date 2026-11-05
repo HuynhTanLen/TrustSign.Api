@@ -25,7 +25,10 @@ public static class ContractErrors
         Error.Validation("Contract.NotEditable", "Chỉ có thể chỉnh sửa hợp đồng khi đang ở trạng thái Nháp.");
 
     public static readonly Error InvalidSigners =
-        Error.Validation("Contract.InvalidSigners", "Hợp đồng phải có từ 1 đến 5 người ký với đầy đủ họ tên và địa chỉ email hợp lệ.");
+        Error.Validation("Contract.InvalidSigners", "Hợp đồng phải có từ 1 đến 5 người nhận với đầy đủ họ tên và địa chỉ email hợp lệ.");
+
+    public static readonly Error AtLeastOneSignerRequired =
+        Error.Validation("Contract.NoSigner", "Hợp đồng phải có ít nhất một người ký (Signer).");
 
     public static readonly Error InvalidSignatureBox =
         Error.Validation("Contract.InvalidSignatureBox", "Tọa độ hoặc kích thước ô chữ ký trên trang PDF không hợp lệ.");
@@ -38,4 +41,13 @@ public static class ContractErrors
 
     public static readonly Error DocumentAccessDenied =
         Error.Unauthorized("Contract.DocumentAccessDenied", "Liên kết xem tài liệu không hợp lệ hoặc đã hết hạn.");
+
+    public static readonly Error SignerNotFound =
+        Error.NotFound("Contract.SignerNotFound", "Không tìm thấy người ký trong hợp đồng.");
+
+    public static readonly Error NotSignerTurn =
+        Error.Validation("Contract.NotSignerTurn", "Chưa tới lượt ký hoặc duyệt của người này.");
+
+    public static readonly Error CcCannotSignOrApprove =
+        Error.Validation("Contract.CcCannotSignOrApprove", "Người nhận bản sao (Cc) không tham gia ký hoặc duyệt.");
 }

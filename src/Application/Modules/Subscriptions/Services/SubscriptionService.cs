@@ -71,7 +71,7 @@ internal sealed class SubscriptionService(
         }
 
         DateTimeOffset now = timeProvider.GetUtcNow();
-        string code = await GenerateUniqueInvoiceCodeAsync(cancel);
+        string code = await GenerateUniqueInvoiceCodeAsync(now, cancel);
 
         Invoice invoice = Invoice.Create(
             code,
@@ -112,7 +112,7 @@ internal sealed class SubscriptionService(
         return new InvoiceStatusDto(invoice.Status.ToString());
     }
 
-    private async Task<string> GenerateUniqueInvoiceCodeAsync(CancellationToken cancel)
+    private async Task<string> GenerateUniqueInvoiceCodeAsync(DateTimeOffset now, CancellationToken cancel)
     {
         for (int i = 0; i < 10; i++)
         {
@@ -124,8 +124,7 @@ internal sealed class SubscriptionService(
             }
         }
 
-        // Fallback with timestamp suffix
-        return $"TS{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 10000000:D7}";
+        return $"TS{now.ToUnixTimeMilliseconds() % 10000000:D7}";
     }
 
     private static InvoiceDto ToDto(Invoice inv) => new(

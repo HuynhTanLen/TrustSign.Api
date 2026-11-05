@@ -49,6 +49,7 @@ public sealed class SubscriptionController(
     }
 
     [Authorize]
+    [Authorize(Policy = AuthorizationPolicies.TenantOwnerOnly)]
     [HttpPost("invoices")]
     public async Task<IActionResult> CreateInvoice([FromBody] CreateInvoiceRequestDto request, CancellationToken cancel)
     {
@@ -80,6 +81,7 @@ public sealed class SubscriptionController(
     }
 
     [Authorize]
+    [Authorize(Policy = AuthorizationPolicies.ContractManagerOrOwner)]
     [HttpGet("invoices/{code}/pdf")]
     public async Task<IActionResult> DownloadInvoicePdf(string code, CancellationToken cancel)
     {

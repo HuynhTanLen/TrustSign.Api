@@ -6,5 +6,11 @@ public interface IUserService
 {
     Task<Result<UserProfileDto>> GetProfileAsync(Guid userId, Guid? activeTenantId, CancellationToken cancel);
 
-    Task<Result<UserProfileDto>> UpdateProfileAsync(Guid userId, Guid? activeTenantId, string fullName, CancellationToken cancel);
+    Task<Result<UserProfileDto>> UpdateProfileAsync(
+        Guid userId,
+        Guid? activeTenantId,
+        string fullName,
+        string? phoneNumber,
+        string? jobTitle,
+        CancellationToken cancel);
 }

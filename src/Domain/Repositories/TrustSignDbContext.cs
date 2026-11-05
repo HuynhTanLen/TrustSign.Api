@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TrustSign.Domain.Entities.Audit;
 using TrustSign.Domain.Entities.Contracts;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.Entities.Subscriptions;
@@ -13,6 +14,7 @@ public sealed class TrustSignDbContext(DbContextOptions<TrustSignDbContext> opti
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<EmailVerificationToken> EmailVerificationTokens => Set<EmailVerificationToken>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Membership> Memberships => Set<Membership>();
@@ -26,6 +28,8 @@ public sealed class TrustSignDbContext(DbContextOptions<TrustSignDbContext> opti
     public DbSet<ContractTemplate> ContractTemplates => Set<ContractTemplate>();
     public DbSet<Contract> Contracts => Set<Contract>();
     public DbSet<ContractSigner> ContractSigners => Set<ContractSigner>();
+
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(TrustSignDbContext).Assembly);

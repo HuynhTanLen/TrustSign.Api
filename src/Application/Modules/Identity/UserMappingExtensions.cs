@@ -27,6 +27,8 @@ internal static class UserMappingExtensions
             user.Status != UserStatus.Pending,
             tenants.Count > 0,
             resolvedActive,
-            tenants);
+            tenants,
+            user.PhoneNumber,
+            user.JobTitle);
     }
 }

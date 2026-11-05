@@ -14,5 +14,8 @@ public interface IRefreshTokenRepository
 
     Task RevokeAllForUserAsync(Guid userId, DateTimeOffset now, CancellationToken cancel);
 
+    /// <summary>Thu hồi mọi phiên của người dùng trừ phiên <paramref name="keepSessionId"/> (nếu có).</summary>
+    Task RevokeOtherSessionsAsync(Guid userId, Guid? keepSessionId, DateTimeOffset now, CancellationToken cancel);
+
     Task SaveChangesAsync(CancellationToken cancel);
 }

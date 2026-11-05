@@ -1,6 +1,6 @@
 using System.Net;
-using System.Net.Mail;
 using Microsoft.Extensions.Options;
+using TrustSign.Application.Modules.Audit;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
@@ -17,6 +17,7 @@ internal sealed class TenantService(
     IAccessTokenIssuer tokenIssuer,
     IEmailSender emailSender,
     ISubscriptionProvisioner subscriptionProvisioner,
+    IAuditLogger auditLogger,
     IOptions<SmtpOptions> smtpOptions,
     TimeProvider timeProvider) : ITenantService
 {
@@ -34,9 +35,29 @@ internal sealed class TenantService(
             return IdentityErrors.InvalidTenantName;
         }
 
-        if (!string.IsNullOrWhiteSpace(request.ContactEmail) && !IsValidEmail(request.ContactEmail))
+        if (!string.IsNullOrWhiteSpace(request.TaxCode) && !TaxCodeValidator.IsValid(request.TaxCode))
+        {
+            return IdentityErrors.InvalidTaxCode;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ContactEmail) && !EmailValidator.IsValid(request.ContactEmail))
         {
             return IdentityErrors.InvalidEmail;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Phone) && !PhoneValidator.IsValid(request.Phone))
+        {
+            return IdentityErrors.InvalidPhoneNumber;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.RepresentativeName) && request.RepresentativeName.Trim().Length > 100)
+        {
+            return IdentityErrors.InvalidRepresentativeName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.RepresentativeTitle) && request.RepresentativeTitle.Trim().Length > 100)
+        {
+            return IdentityErrors.InvalidRepresentativeTitle;
         }
 
         User? user = await users.FindByIdAsync(userId, cancel);
@@ -52,27 +73,17 @@ internal sealed class TenantService(
             request.Address,
             request.ContactEmail,
             user.Id,
-            now);
+            now,
+            request.RepresentativeName,
+            request.RepresentativeTitle,
+            request.Phone);
 
         Membership ownerMembership = Membership.Create(tenant.Id, user.Id, TenantRole.TenantOwner, now);
         await tenants.AddTenantWithOwnerAsync(tenant, ownerMembership, cancel);
 
         await subscriptionProvisioner.ProvisionTrialSubscriptionAsync(tenant.Id, now, cancel);
 
-        await UpdateSessionActiveTenantAsync(sessionId, tenant.Id, now, cancel);
-
-        IReadOnlyList<UserTenantMembership> memberships = await tenants.GetUserTenantsAsync(user.Id, cancel);
-        AccessTokenDto access = tokenIssuer.Issue(
-            user.Id,
-            sessionId,
-            user.Role,
-            new TenantClaimContext(tenant.Id, TenantRole.TenantOwner, tenant.Status));
-
-        return new TenantSessionResponseDto(
-            ToTenantDto(tenant, TenantRole.TenantOwner),
-            access.AccessToken,
-            access.ExpiresAt,
-            user.ToProfileDto(memberships, tenant.Id));
+        return await IssueTenantSessionAsync(user, sessionId, tenant, TenantRole.TenantOwner, now, cancel);
     }
 
     public async Task<Result<IReadOnlyList<TenantDto>>> GetMyTenantsAsync(Guid userId, CancellationToken cancel)
@@ -81,6 +92,64 @@ internal sealed class TenantService(
         return memberships
             .Select(item => ToTenantDto(item.Tenant, item.Membership.Role))
             .ToList();
+    }
+
+    public async Task<Result<TenantDto>> GetCurrentTenantAsync(Guid tenantId, Guid userId, CancellationToken cancel)
+    {
+        Tenant? tenant = await tenants.FindByIdAsync(tenantId, cancel);
+        if (tenant is null)
+        {
+            return IdentityErrors.TenantNotFound;
+        }
+
+        Membership? membership = await tenants.FindMembershipAsync(tenantId, userId, cancel);
+        return ToTenantDto(tenant, membership?.Role ?? TenantRole.Employee);
+    }
+
+    public async Task<Result<TenantDto>> UpdateCurrentTenantAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        UpdateTenantRequestDto request,
+        CancellationToken cancel)
+    {
+        Tenant? tenant = await tenants.FindByIdAsync(tenantId, cancel);
+        if (tenant is null)
+        {
+            return IdentityErrors.TenantNotFound;
+        }
+
+        Membership? membership = await tenants.FindMembershipAsync(tenantId, actorUserId, cancel);
+        if (membership is null || membership.Role != TenantRole.TenantOwner)
+        {
+            return IdentityErrors.TenantAccessDenied;
+        }
+
+        Result updateResult = tenant.Update(
+            request.Name,
+            request.TaxCode,
+            request.Address,
+            request.ContactEmail,
+            request.Phone,
+            request.RepresentativeName,
+            request.RepresentativeTitle);
+
+        if (updateResult.IsFailure)
+        {
+            return updateResult.Error;
+        }
+
+        await tenants.SaveChangesAsync(cancel);
+
+        await auditLogger.LogAsync(
+            tenantId,
+            actorUserId,
+            "Tenant.Updated",
+            "Tenant",
+            tenantId.ToString(),
+            request,
+            cancel);
+
+        return ToTenantDto(tenant, membership.Role);
     }
 
     public async Task<Result<AuthResponseDto>> SwitchTenantAsync(
@@ -229,7 +298,7 @@ internal sealed class TenantService(
         CreateInvitationRequestDto request,
         CancellationToken cancel)
     {
-        if (!IsValidEmail(request.Email))
+        if (!EmailValidator.IsValid(request.Email))
         {
             return IdentityErrors.InvalidEmail;
         }
@@ -281,10 +350,10 @@ internal sealed class TenantService(
 
         string html = $"""
             <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2328;line-height:1.6;">
-              <h2 style="color:#1f5fa8;margin-bottom:12px;">Lời mời tham gia doanh nghiệp</h2>
+              <h2 style="color:#1b3a5c;margin-bottom:12px;">Lời mời tham gia doanh nghiệp</h2>
               <p>Bạn đã được mời tham gia không gian làm việc của <strong>{safeTenantName}</strong> trên hệ thống Chữ Tín với vai trò <strong>{roleDisplay}</strong>.</p>
               <p style="margin:24px 0;">
-                <a href="{acceptUrl}" style="background:#1f5fa8;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:4px;display:inline-block;font-weight:600;">
+                <a href="{acceptUrl}" style="background:#1b3a5c;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:4px;display:inline-block;font-weight:600;">
                   Xem và chấp nhận lời mời
                 </a>
               </p>
@@ -395,6 +464,17 @@ internal sealed class TenantService(
             await tenants.SaveChangesAsync(cancel);
         }
 
+        return await IssueTenantSessionAsync(user, sessionId, tenant, effectiveRole, now, cancel);
+    }
+
+    private async Task<TenantSessionResponseDto> IssueTenantSessionAsync(
+        User user,
+        Guid sessionId,
+        Tenant tenant,
+        TenantRole role,
+        DateTimeOffset now,
+        CancellationToken cancel)
+    {
         await UpdateSessionActiveTenantAsync(sessionId, tenant.Id, now, cancel);
 
         IReadOnlyList<UserTenantMembership> memberships = await tenants.GetUserTenantsAsync(user.Id, cancel);
@@ -402,10 +482,10 @@ internal sealed class TenantService(
             user.Id,
             sessionId,
             user.Role,
-            new TenantClaimContext(tenant.Id, effectiveRole, tenant.Status));
+            new TenantClaimContext(tenant.Id, role, tenant.Status));
 
         return new TenantSessionResponseDto(
-            ToTenantDto(tenant, effectiveRole),
+            ToTenantDto(tenant, role),
             access.AccessToken,
             access.ExpiresAt,
             user.ToProfileDto(memberships, tenant.Id));
@@ -433,16 +513,8 @@ internal sealed class TenantService(
         tenant.ContactEmail,
         tenant.Status.ToString(),
         role.ToString(),
-        tenant.CreatedAt);
-
-    private static bool IsValidEmail(string? email)
-    {
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return false;
-        }
-
-        string trimmed = email.Trim();
-        return trimmed.Length <= 254 && MailAddress.TryCreate(trimmed, out MailAddress? parsed) && parsed.Address == trimmed;
-    }
+        tenant.CreatedAt,
+        tenant.RepresentativeName,
+        tenant.RepresentativeTitle,
+        tenant.Phone);
 }
