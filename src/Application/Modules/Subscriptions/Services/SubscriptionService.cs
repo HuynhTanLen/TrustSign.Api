@@ -11,7 +11,8 @@ internal sealed class SubscriptionService(
     IInvoiceRepository invoices,
     IPlanRepository plans,
     IOptions<SepayOptions> sepayOptions,
-    TimeProvider timeProvider) : ISubscriptionService
+    TimeProvider timeProvider,
+    ISubscriptionProvisioner subscriptionProvisioner) : ISubscriptionService
 {
     private static readonly TimeSpan InvoiceLifetime = TimeSpan.FromHours(24);
     private readonly SepayOptions _sepayOptions = sepayOptions.Value;
@@ -20,13 +21,26 @@ internal sealed class SubscriptionService(
         Guid tenantId,
         CancellationToken cancel = default)
     {
+        DateTimeOffset now = timeProvider.GetUtcNow();
         Subscription? sub = await subscriptions.FindByTenantIdAsync(tenantId, cancel);
+        if (sub is null)
+        {
+            try
+            {
+                await subscriptionProvisioner.ProvisionTrialSubscriptionAsync(tenantId, now, cancel);
+            }
+            catch
+            {
+                // Bỏ qua lỗi bất đồng bộ nếu luồng khác cùng cấp gói
+            }
+            sub = await subscriptions.FindByTenantIdAsync(tenantId, cancel);
+        }
+
         if (sub is null)
         {
             return SubscriptionErrors.SubscriptionNotFound;
         }
 
-        DateTimeOffset now = timeProvider.GetUtcNow();
         Plan? plan = await plans.FindByIdAsync(sub.PlanId, cancel);
 
         return new CurrentSubscriptionDto(

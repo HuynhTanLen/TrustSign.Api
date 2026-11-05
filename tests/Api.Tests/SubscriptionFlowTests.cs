@@ -41,9 +41,9 @@ public sealed class SubscriptionFlowTests
         _seeder = new PlanSeeder(_store, _clock, NullLogger<PlanSeeder>.Instance);
         _planService = new PlanService(_store, _clock);
         _provisioner = new SubscriptionProvisioner(_store, _store, _seeder, NullLogger<SubscriptionProvisioner>.Instance);
-        _subscriptionService = new SubscriptionService(_store, _store, _store, _sepayOptions, _clock);
+        _subscriptionService = new SubscriptionService(_store, _store, _store, _sepayOptions, _clock, _provisioner);
         _webhookService = new SepayWebhookService(_store, _store, _store, _store, _clock, NullLogger<SepayWebhookService>.Instance);
-        _quotaService = new QuotaService(_store, _clock);
+        _quotaService = new QuotaService(_store, _provisioner, _clock);
         _pdfService = new InvoicePdfService(_store, _store);
     }
 
@@ -80,7 +80,21 @@ public sealed class SubscriptionFlowTests
     }
 
     [Fact]
-    public async Task Create_invoice_generates_vietqr_url_and_pending_status_SUB04()
+    public async Task GetCurrentSubscriptionAsync_auto_provisions_trial_if_tenant_has_no_subscription()
+    {
+        await _seeder.SeedDefaultPlansAsync(Cancel);
+        Guid newTenantId = Guid.NewGuid();
+
+        Result<CurrentSubscriptionDto> currentSub = await _subscriptionService.GetCurrentSubscriptionAsync(newTenantId, Cancel);
+
+        Assert.True(currentSub.IsSuccess);
+        Assert.Equal("Dùng thử", currentSub.Value.PlanName);
+        Assert.Equal(SubscriptionStatus.Trial.ToString(), currentSub.Value.Status);
+        Assert.Equal(5, currentSub.Value.QuotaLimit);
+    }
+
+ [Fact]
+ public async Task Create_invoice_generates_vietqr_url_and_pending_status_SUB04()
     {
         await _seeder.SeedDefaultPlansAsync(Cancel);
         Guid tenantId = Guid.NewGuid();
