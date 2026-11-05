@@ -5,7 +5,7 @@ using iText.Kernel.Pdf;
 using iText.Layout;
 using iText.Layout.Element;
 using iText.Layout.Properties;
-using TrustSign.Application.Common.Pdf;
+using TrustSign.Application.Shared.Pdf;
 
 namespace TrustSign.Application.Modules.Contracts;
 

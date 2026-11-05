@@ -6,7 +6,7 @@ using iText.Layout;
 using iText.Layout.Borders;
 using iText.Layout.Element;
 using iText.Layout.Properties;
-using TrustSign.Application.Common.Pdf;
+using TrustSign.Application.Shared.Pdf;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
 using TrustSign.Domain.Entities.Identity;

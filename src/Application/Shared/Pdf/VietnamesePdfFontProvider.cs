@@ -2,7 +2,7 @@ using iText.IO.Font;
 using iText.IO.Font.Constants;
 using iText.Kernel.Font;
 
-namespace TrustSign.Application.Common.Pdf;
+namespace TrustSign.Application.Shared.Pdf;
 
 /// <summary>
 /// Cung cấp <see cref="PdfFont"/> hỗ trợ tiếng Việt Unicode (IDENTITY_H) cho iText.
