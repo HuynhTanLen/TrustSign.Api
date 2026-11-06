@@ -1,0 +1,79 @@
+name: Deploy
+
+# Mỗi lần merge vào main: chạy test → build image → đẩy lên GHCR → SSH vào VPS kéo image mới.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # cho phép bấm "Run workflow" để deploy lại bằng tay
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # không cắt ngang một lần deploy đang chạy
+
+env:
+  # GHCR bắt buộc tên image viết thường, nên không dùng thẳng github.repository.
+  IMAGE: ghcr.io/huynhtanlen/trustsign.api
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Tag theo commit để rollback được; latest để chạy tay cho tiện.
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chép cấu hình compose + Caddyfile lên VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: deploy/docker-compose.prod.yml,deploy/Caddyfile
+          target: ~/trustsign
+          strip_components: 1
+
+      - name: Kéo image mới và khởi động lại
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/trustsign
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            export IMAGE_TAG=${{ github.sha }}
+            docker compose -f docker-compose.prod.yml pull api
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
+
+      - name: Kiểm tra API đã sống
+        run: curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://${{ vars.API_DOMAIN }}/health/ready

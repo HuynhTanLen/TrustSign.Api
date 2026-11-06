@@ -21,7 +21,8 @@ COPY --from=build /app/publish ./
 
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
-RUN mkdir -p /app/keys && chown -R $APP_UID /app/keys
+# Tạo sẵn thư mục để volume mount vào thừa hưởng quyền của user không phải root.
+RUN mkdir -p /app/keys /app/storage && chown -R $APP_UID /app/keys /app/storage
 USER $APP_UID
 
 ENTRYPOINT ["dotnet", "TrustSign.Api.dll"]

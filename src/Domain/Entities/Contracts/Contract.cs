@@ -323,7 +323,8 @@ public sealed class Contract
     /// </summary>
     public Result Cancel(DateTimeOffset now)
     {
-        if (Status is not (ContractStatus.Pending or ContractStatus.Signing))
+        // Bản nháp chưa gửi ai và chưa trừ hạn mức nên huỷ thẳng được.
+        if (Status is not (ContractStatus.Draft or ContractStatus.Pending or ContractStatus.Signing))
         {
             return ContractErrors.ContractCannotCancel;
         }

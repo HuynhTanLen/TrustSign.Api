@@ -27,40 +27,41 @@ public sealed class EkycController(IIdentityVerificationService ekyc) : Controll
 
     [HttpPost]
     [RequestSizeLimit(3 * IdentityVerification.MaxImageBytes + 64 * 1024)]
-    public async Task<IActionResult> Submit(
-        [FromForm] string? qrText,
-        [FromForm] string? faceDistance,
-        [FromForm] IFormFile? selfie,
-        [FromForm] IFormFile? front,
-        [FromForm] IFormFile? back,
-        CancellationToken cancel)
+    public async Task<IActionResult> Submit([FromForm] EkycSubmitForm form, CancellationToken cancel)
     {
         if (User.GetUserId() is not { } userId)
         {
             return this.ToProblem(IdentityErrors.SessionInvalid);
         }
 
-        if (selfie is null || front is null || back is null ||
-            selfie.Length > IdentityVerification.MaxImageBytes ||
-            front.Length > IdentityVerification.MaxImageBytes ||
-            back.Length > IdentityVerification.MaxImageBytes)
+        return await SubmitFormAsync(form, command => ekyc.SubmitAsync(userId, command, cancel), cancel);
+    }
+
+    [HttpPost("handoff")]
+    public async Task<IActionResult> CreateHandoff(CancellationToken cancel)
+    {
+        if (User.GetUserId() is not { } userId)
         {
-            return this.ToProblem(IdentityErrors.EkycInvalidImage);
+            return this.ToProblem(IdentityErrors.SessionInvalid);
         }
 
-        Result<MyIdentityVerificationDto> result = await ekyc.SubmitAsync(
-            userId,
-            new SubmitIdentityVerificationCommand(
-                qrText ?? string.Empty,
-                // Form dùng văn hoá hiện tại khi bind số; đọc invariant để "0.42" không thành 42 trên máy vi-VN.
-                double.TryParse(faceDistance, NumberStyles.Float, CultureInfo.InvariantCulture, out double distance) ? distance : double.NaN,
-                await ReadAsync(selfie, cancel),
-                await ReadAsync(front, cancel),
-                await ReadAsync(back, cancel)),
-            cancel);
-
+        Result<EkycHandoffDto> result = await ekyc.CreateHandoffAsync(userId, cancel);
         return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
     }
+
+    [AllowAnonymous]
+    [HttpGet("handoff/{token}")]
+    public async Task<IActionResult> GetHandoff(string token, CancellationToken cancel)
+    {
+        Result<EkycHandoffInfoDto> result = await ekyc.GetHandoffAsync(token, cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("handoff/{token}")]
+    [RequestSizeLimit(3 * IdentityVerification.MaxImageBytes + 64 * 1024)]
+    public Task<IActionResult> SubmitHandoff(string token, [FromForm] EkycSubmitForm form, CancellationToken cancel) =>
+        SubmitFormAsync(form, command => ekyc.SubmitByHandoffAsync(token, command, cancel), cancel);
 
     [Authorize(Roles = "Admin")]
     [HttpGet("admin")]
@@ -94,6 +95,43 @@ public sealed class EkycController(IIdentityVerificationService ekyc) : Controll
 
         Result result = await ekyc.RevokeAsync(adminId, id, request.Reason, cancel);
         return result.IsSuccess ? NoContent() : this.ToProblem(result.Error);
+    }
+
+    public sealed class EkycSubmitForm
+    {
+        public string? QrText { get; init; }
+
+        public string? FaceDistance { get; init; }
+
+        public IFormFile? Selfie { get; init; }
+
+        public IFormFile? Front { get; init; }
+
+        public IFormFile? Back { get; init; }
+    }
+
+    private async Task<IActionResult> SubmitFormAsync(
+        EkycSubmitForm form,
+        Func<SubmitIdentityVerificationCommand, Task<Result<MyIdentityVerificationDto>>> submit,
+        CancellationToken cancel)
+    {
+        if (form.Selfie is not { } selfie || form.Front is not { } front || form.Back is not { } back ||
+            selfie.Length > IdentityVerification.MaxImageBytes ||
+            front.Length > IdentityVerification.MaxImageBytes ||
+            back.Length > IdentityVerification.MaxImageBytes)
+        {
+            return this.ToProblem(IdentityErrors.EkycInvalidImage);
+        }
+
+        Result<MyIdentityVerificationDto> result = await submit(new SubmitIdentityVerificationCommand(
+            form.QrText ?? string.Empty,
+            // Form dùng văn hoá hiện tại khi bind số; đọc invariant để "0.42" không thành 42 trên máy vi-VN.
+            double.TryParse(form.FaceDistance, NumberStyles.Float, CultureInfo.InvariantCulture, out double distance) ? distance : double.NaN,
+            await ReadAsync(selfie, cancel),
+            await ReadAsync(front, cancel),
+            await ReadAsync(back, cancel)));
+
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
     }
 
     private static async Task<byte[]> ReadAsync(IFormFile file, CancellationToken cancel)

@@ -1,0 +1,57 @@
+# Chạy trên VPS tại ~/trustsign (workflow Deploy chép file này lên). Giá trị bí mật nằm trong ~/trustsign/.env.
+services:
+  api:
+    image: ghcr.io/huynhtanlen/trustsign.api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      AutoMigrate: "true"
+      Jwt__PrivateKeyPath: /app/keys/signing-key.pem
+      Jwt__CreateKeyIfMissing: "true" # sinh khóa lần đầu, giữ lại nhờ volume keys
+      ContractStorage__StorageRootPath: /app/storage/contracts
+      ConnectionStrings__TrustSignDb: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+    volumes:
+      - keys:/app/keys
+      - storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Caddy tự xin chứng chỉ HTTPS Let's Encrypt cho API_DOMAIN.
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  pg:
+  keys:
+  storage:
+  caddy-data:
+  caddy-config:

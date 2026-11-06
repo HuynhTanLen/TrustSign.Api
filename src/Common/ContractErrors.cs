@@ -37,7 +37,7 @@ public static class ContractErrors
         Error.Validation("Contract.InvalidDueDate", "Thời hạn ký phải lớn hơn thời điểm hiện tại.");
 
     public static readonly Error ContractCannotCancel =
-        Error.Validation("Contract.CannotCancel", "Chỉ có thể hủy hợp đồng khi đang ở trạng thái Chờ ký hoặc Đang ký.");
+        Error.Validation("Contract.CannotCancel", "Chỉ có thể hủy hợp đồng khi đang ở trạng thái Nháp, Chờ ký hoặc Đang ký.");
 
     public static readonly Error DocumentAccessDenied =
         Error.Unauthorized("Contract.DocumentAccessDenied", "Liên kết xem tài liệu không hợp lệ hoặc đã hết hạn.");
@@ -47,6 +47,12 @@ public static class ContractErrors
 
     public static readonly Error NotSignerTurn =
         Error.Validation("Contract.NotSignerTurn", "Chưa tới lượt ký hoặc duyệt của người này.");
+
+    public static readonly Error NoPendingSigner =
+        Error.Validation("Contract.NoPendingSigner", "Hợp đồng không còn ai đang chờ ký hoặc duyệt.");
+
+    public static readonly Error InvitationEmailFailed =
+        Error.Validation("Contract.InvitationEmailFailed", "Không gửi được email mời ký. Kiểm tra cấu hình email rồi thử lại.");
 
     public static readonly Error CcCannotSignOrApprove =
         Error.Validation("Contract.CcCannotSignOrApprove", "Người nhận bản sao (Cc) không tham gia ký hoặc duyệt.");

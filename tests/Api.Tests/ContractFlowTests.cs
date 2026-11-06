@@ -219,6 +219,17 @@ public sealed class ContractFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task Draft_can_be_cancelled_once()
+    {
+        byte[] pdf = _pdfGenerator.RenderTemplateToPdf("HĐ nháp", "HD-02", "Nội dung", _clock.GetUtcNow());
+        Result<CreatedContractResponseDto> draft = await _contractService.UploadDraftAsync(_tenantA, _ownerUserId, "Hợp đồng nháp", pdf, Cancel);
+
+        Assert.True((await _contractService.CancelAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, draft.Value.ContractId, Cancel)).IsSuccess);
+        Result again = await _contractService.CancelAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, draft.Value.ContractId, Cancel);
+        Assert.Equal(ContractErrors.ContractCannotCancel.Code, again.Error.Code);
+    }
+
+    [Fact]
     public async Task Set_signers_and_send_contract_consumes_quota_and_notifies_first_signer_CON05_CON06()
     {
         byte[] validPdf = _pdfGenerator.RenderTemplateToPdf("HĐ 1", "HD-01", "Nội dung", _clock.GetUtcNow());
@@ -284,6 +295,12 @@ public sealed class ContractFlowTests : IDisposable
         Assert.Equal("Nguyễn Văn A", detail.Value.CurrentSigner);
         Assert.Equal(SignerStatus.Current.ToString(), detail.Value.Signers[0].Status);
         Assert.Equal(SignerStatus.Waiting.ToString(), detail.Value.Signers[1].Status);
+
+        // Gửi lại lời mời: email đi tới người đang tới lượt
+        _emails.LastSent = null;
+        Result remind = await _contractService.RemindCurrentSignerAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, draft.Value.ContractId, Cancel);
+        Assert.True(remind.IsSuccess);
+        Assert.Equal("a@partner.vn", _emails.LastSent?.To);
     }
 
     [Fact]
@@ -563,7 +580,7 @@ public sealed class ContractFlowTests : IDisposable
 
     private sealed class RecordingEmailSender : IEmailSender
     {
-        public EmailMessage? LastSent { get; private set; }
+        public EmailMessage? LastSent { get; set; }
 
         public Task SendAsync(EmailMessage message, CancellationToken cancel)
         {

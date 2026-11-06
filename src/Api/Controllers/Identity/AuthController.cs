@@ -11,8 +11,7 @@ namespace TrustSign.Api.Controllers.Identity;
 [Route("api/auth")]
 public sealed class AuthController(
     IAuthService auth,
-    IUserService users,
-    IHostEnvironment environment) : ControllerBase
+    IUserService users) : ControllerBase
 {
     public const string RefreshTokenCookieName = "trustsign_rt";
 
@@ -142,12 +141,18 @@ public sealed class AuthController(
     private void DeleteRefreshCookie() =>
         Response.Cookies.Delete(RefreshTokenCookieName, CreateCookieOptions(expiresAt: null));
 
-    private CookieOptions CreateCookieOptions(DateTimeOffset? expiresAt) => new()
+    private CookieOptions CreateCookieOptions(DateTimeOffset? expiresAt)
     {
-        HttpOnly = true,
-        Secure = !environment.IsDevelopment(),
-        SameSite = SameSiteMode.Lax,
-        Path = "/api/auth",
-        Expires = expiresAt
-    };
+        // Tự động thích ứng: Nếu chạy qua HTTPS/Cloudflare Tunnel -> Secure=true & SameSite=None
+        // Nếu chạy local qua HTTP (http://localhost:5050) -> Secure=false & SameSite=Lax (tránh bị trình duyệt chặn do SameSite=None bắt buộc HTTPS)
+        bool isHttps = Request.IsHttps;
+        return new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = isHttps,
+            SameSite = isHttps ? SameSiteMode.None : SameSiteMode.Lax,
+            Path = "/api/auth",
+            Expires = expiresAt
+        };
+    }
 }

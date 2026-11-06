@@ -34,3 +34,8 @@ public sealed record AdminIdentityVerificationDto(
     string? RevokeReason);
 
 public sealed record RevokeIdentityVerificationRequestDto(string? Reason);
+
+public sealed record EkycHandoffDto(string Token, DateTimeOffset ExpiresAt);
+
+/// <summary>Điện thoại chỉ thấy email đã che để người dùng biết đang xác minh cho tài khoản nào.</summary>
+public sealed record EkycHandoffInfoDto(string MaskedEmail, string Status, DateTimeOffset ExpiresAt);

@@ -138,6 +138,21 @@ public sealed class ContractsController(IContractService contractService) : Cont
     }
 
     [Authorize(Policy = AuthorizationPolicies.TenantMember)]
+    [HttpPost("{id:guid}/remind")]
+    public async Task<IActionResult> Remind(Guid id, CancellationToken cancel)
+    {
+        if (User.GetTenantId() is not { } tenantId ||
+            User.GetUserId() is not { } userId ||
+            User.GetTenantRole() is not { } role)
+        {
+            return this.ToProblem(IdentityErrors.TenantAccessDenied);
+        }
+
+        Result result = await contractService.RemindCurrentSignerAsync(tenantId, userId, role, id, cancel);
+        return result.IsSuccess ? NoContent() : this.ToProblem(result.Error);
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.TenantMember)]
     [HttpPost("{id:guid}/cancel")]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken cancel)
     {

@@ -462,7 +462,32 @@ internal sealed class ContractService(
         return new CreatedContractResponseDto(contractId);
     }
 
-    private async Task TrySendFirstSignerNotificationAsync(
+    public async Task<Result> RemindCurrentSignerAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        TenantRole actorRole,
+        Guid contractId,
+        CancellationToken cancel = default)
+    {
+        Result<Contract> accessResult = await GetAuthorizedContractAsync(tenantId, actorUserId, actorRole, contractId, cancel);
+        if (accessResult.IsFailure)
+        {
+            return accessResult.Error;
+        }
+
+        ContractSigner? current = accessResult.Value.Signers.FirstOrDefault(s => s.Status == SignerStatus.Current);
+        if (current is null)
+        {
+            return ContractErrors.NoPendingSigner;
+        }
+
+        return await TrySendFirstSignerNotificationAsync(accessResult.Value, current, cancel)
+            ? Result.Success()
+            : ContractErrors.InvitationEmailFailed;
+    }
+
+    /// <summary>Gửi email mời ký/duyệt; trả false nếu gửi lỗi (đã ghi log) để luồng ký không bị chặn.</summary>
+    private async Task<bool> TrySendFirstSignerNotificationAsync(
         Contract contract,
         ContractSigner firstSigner,
         CancellationToken cancel)
@@ -496,10 +521,12 @@ internal sealed class ContractService(
             await emailSender.SendAsync(
                 new EmailMessage(firstSigner.Email, $"[Chữ Tín] Mời {roleLabel} hợp đồng {contract.Code} - {contract.Title}", html),
                 cancel);
+            return true;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Không gửi được email mời ký/duyệt hợp đồng {ContractCode} tới {Email}", contract.Code, firstSigner.Email);
+            return false;
         }
     }
 

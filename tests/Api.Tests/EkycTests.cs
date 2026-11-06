@@ -16,16 +16,42 @@ public sealed class EkycTests
 
     private readonly InMemoryVerifications _repo = new();
     private readonly InMemoryStorage _storage = new();
+    private readonly FakeClock _clock = new(new DateTimeOffset(2026, 11, 5, 8, 0, 0, TimeSpan.Zero));
+    private readonly InMemoryUsers _users = new();
     private readonly IdentityVerificationService _service;
 
     public EkycTests()
     {
         _service = new IdentityVerificationService(
             _repo,
+            _users,
             _storage,
             new NoOpAuditLogger(),
             Options.Create(new ContractStorageOptions()),
-            TimeProvider.System);
+            _clock);
+    }
+
+    [Fact]
+    public async Task Handoff_link_submits_for_its_owner_and_expires()
+    {
+        User owner = User.Register("chu.tk@trustsign.vn", "Chủ Tài Khoản", "hash", _clock.GetUtcNow());
+        _users.Items.Add(owner);
+        string token = (await _service.CreateHandoffAsync(owner.Id, CancellationToken.None)).Value.Token;
+
+        EkycHandoffInfoDto info = (await _service.GetHandoffAsync(token, CancellationToken.None)).Value;
+        Assert.Equal("c***@trustsign.vn", info.MaskedEmail);
+        Assert.Equal("None", info.Status);
+
+        // Sửa một ký tự userId là chữ ký HMAC không còn khớp.
+        string forged = (token[0] == 'a' ? 'b' : 'a') + token[1..];
+        Assert.Equal(IdentityErrors.EkycHandoffInvalid, (await _service.GetHandoffAsync(forged, CancellationToken.None)).Error);
+
+        Assert.True((await _service.SubmitByHandoffAsync(token, Command(0.4), CancellationToken.None)).IsSuccess);
+        Assert.Equal(owner.Id, _repo.Items[0].UserId);
+        Assert.Equal(IdentityErrors.EkycAlreadyVerified, (await _service.CreateHandoffAsync(owner.Id, CancellationToken.None)).Error);
+
+        _clock.Current += IdentityVerificationService.HandoffLifetime + TimeSpan.FromSeconds(1);
+        Assert.Equal(IdentityErrors.EkycHandoffInvalid, (await _service.GetHandoffAsync(token, CancellationToken.None)).Error);
     }
 
     [Fact]
@@ -127,6 +153,32 @@ public sealed class EkycTests
         public string CreateSigningToken(Guid contractId, Guid signerId, DateTimeOffset now) => throw new NotSupportedException();
 
         public bool ValidateSigningToken(string token, out Guid contractId, out Guid signerId, DateTimeOffset now) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeClock(DateTimeOffset initial) : TimeProvider
+    {
+        public DateTimeOffset Current { get; set; } = initial;
+        public override DateTimeOffset GetUtcNow() => Current;
+    }
+
+    private sealed class InMemoryUsers : IUserRepository
+    {
+        public List<User> Items { get; } = [];
+
+        public Task<User?> FindByIdAsync(Guid id, CancellationToken cancel) => Task.FromResult(Items.FirstOrDefault(u => u.Id == id));
+
+        public Task<IReadOnlyDictionary<Guid, User>> FindByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancel) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, User>>(Items.Where(u => ids.Contains(u.Id)).ToDictionary(u => u.Id));
+
+        public Task<User?> FindByEmailAsync(string email, CancellationToken cancel) => Task.FromResult(Items.FirstOrDefault(u => u.Email == email));
+
+        public Task AddAsync(User user, CancellationToken cancel)
+        {
+            Items.Add(user);
+            return Task.CompletedTask;
+        }
+
+        public Task SaveChangesAsync(CancellationToken cancel) => Task.CompletedTask;
     }
 
     private sealed class NoOpAuditLogger : IAuditLogger

@@ -1,3 +1,5 @@
+using System.Buffers.Text;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
@@ -25,15 +27,21 @@ internal sealed class IdentityVerificationService : IIdentityVerificationService
     private readonly IAuditLogger _audit;
     private readonly TimeProvider _time;
     private readonly byte[] _imageKey;
+    private readonly byte[] _handoffKey;
+    private readonly IUserRepository _users;
+
+    public static readonly TimeSpan HandoffLifetime = TimeSpan.FromMinutes(15);
 
     public IdentityVerificationService(
         IIdentityVerificationRepository verifications,
+        IUserRepository users,
         IContractFileStorage storage,
         IAuditLogger audit,
         IOptions<ContractStorageOptions> storageOptions,
         TimeProvider time)
     {
         _verifications = verifications;
+        _users = users;
         _storage = storage;
         _audit = audit;
         _time = time;
@@ -43,6 +51,70 @@ internal sealed class IdentityVerificationService : IIdentityVerificationService
             Encoding.UTF8.GetBytes(storageOptions.Value.DocumentTokenSecret),
             32,
             info: "trustsign-ekyc-images-v1"u8.ToArray());
+        // Khoá riêng cho link chuyển sang điện thoại, để token ký hợp đồng không bao giờ dùng thay được.
+        _handoffKey = HKDF.DeriveKey(
+            HashAlgorithmName.SHA256,
+            Encoding.UTF8.GetBytes(storageOptions.Value.DocumentTokenSecret),
+            32,
+            info: "trustsign-ekyc-handoff-v1"u8.ToArray());
+    }
+
+    public async Task<Result<EkycHandoffDto>> CreateHandoffAsync(Guid userId, CancellationToken cancel)
+    {
+        if ((await GetMineAsync(userId, cancel)).Status == nameof(IdentityVerificationStatus.Verified))
+        {
+            return IdentityErrors.EkycAlreadyVerified;
+        }
+
+        DateTimeOffset expiresAt = _time.GetUtcNow() + HandoffLifetime;
+        string payload = $"{userId:N}.{expiresAt.ToUnixTimeSeconds()}";
+        return new EkycHandoffDto($"{payload}.{SignHandoff(payload)}", expiresAt);
+    }
+
+    public async Task<Result<EkycHandoffInfoDto>> GetHandoffAsync(string token, CancellationToken cancel)
+    {
+        if (ReadHandoff(token) is not var (userId, expiresAt) || await _users.FindByIdAsync(userId, cancel) is not { } user)
+        {
+            return IdentityErrors.EkycHandoffInvalid;
+        }
+
+        MyIdentityVerificationDto mine = await GetMineAsync(userId, cancel);
+        return new EkycHandoffInfoDto(MaskEmail(user.Email), mine.Status, expiresAt);
+    }
+
+    public Task<Result<MyIdentityVerificationDto>> SubmitByHandoffAsync(
+        string token,
+        SubmitIdentityVerificationCommand command,
+        CancellationToken cancel) =>
+        ReadHandoff(token) is var (userId, _)
+            ? SubmitAsync(userId, command, cancel)
+            : Task.FromResult<Result<MyIdentityVerificationDto>>(IdentityErrors.EkycHandoffInvalid);
+
+    /// <summary>Token dạng <c>userId.exp.hmac</c>; trả null khi sai chữ ký hoặc đã hết hạn.</summary>
+    internal (Guid UserId, DateTimeOffset ExpiresAt)? ReadHandoff(string? token)
+    {
+        string[] parts = (token ?? string.Empty).Split('.');
+        if (parts.Length != 3 ||
+            !Guid.TryParseExact(parts[0], "N", out Guid userId) ||
+            !long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out long exp) ||
+            !CryptographicOperations.FixedTimeEquals(
+                Encoding.ASCII.GetBytes(parts[2]),
+                Encoding.ASCII.GetBytes(SignHandoff($"{parts[0]}.{parts[1]}"))))
+        {
+            return null;
+        }
+
+        DateTimeOffset expiresAt = DateTimeOffset.FromUnixTimeSeconds(exp);
+        return _time.GetUtcNow() <= expiresAt ? (userId, expiresAt) : null;
+    }
+
+    private string SignHandoff(string payload) =>
+        Base64Url.EncodeToString(HMACSHA256.HashData(_handoffKey, Encoding.ASCII.GetBytes(payload)));
+
+    private static string MaskEmail(string email)
+    {
+        int at = email.IndexOf('@');
+        return at <= 1 ? email : $"{email[0]}***{email[at..]}";
     }
 
     public async Task<MyIdentityVerificationDto> GetMineAsync(Guid userId, CancellationToken cancel)

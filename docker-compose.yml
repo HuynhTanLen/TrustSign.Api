@@ -20,7 +20,7 @@ services:
 
   # Kho lưu file PDF tương thích S3. API: http://localhost:9000, console: http://localhost:9001
   minio:
-    image: minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     container_name: trustsign-minio
     command: server /data --console-address ":9001"
     environment:

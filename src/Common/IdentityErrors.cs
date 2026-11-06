@@ -114,6 +114,10 @@ public static class IdentityErrors
     public static readonly Error EkycNotFound =
         Error.NotFound("Ekyc.NotFound", "Không tìm thấy hồ sơ xác minh.");
 
+    // 404 thay vì 401 để trang điện thoại (không đăng nhập) không bị chuyển về màn hình đăng nhập.
+    public static readonly Error EkycHandoffInvalid =
+        Error.NotFound("Ekyc.HandoffInvalid", "Liên kết xác minh đã hết hạn hoặc không hợp lệ. Hãy quét lại mã QR trên máy tính.");
+
     public static readonly Error EkycNotVerified =
         Error.Validation("Ekyc.NotVerified", "Hồ sơ này không còn ở trạng thái đã xác minh.");
 }

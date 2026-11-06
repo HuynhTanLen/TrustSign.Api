@@ -56,6 +56,14 @@ public interface IContractService
         Guid contractId,
         CancellationToken cancel = default);
 
+    /// <summary>Gửi lại email mời cho người đang tới lượt ký/duyệt.</summary>
+    Task<Result> RemindCurrentSignerAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        TenantRole actorRole,
+        Guid contractId,
+        CancellationToken cancel = default);
+
     Task<Result<byte[]>> GetDocumentBytesByTokenAsync(
         Guid contractId,
         string token,
