@@ -1,4 +1,12 @@
 using System.Globalization;
+using TrustSign.Application.Shared.Pdf;
+using TrustSign.Common;
+using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
+using TrustSign.Domain.Entities.Identity;
+using TrustSign.Domain.Entities.Subscriptions;
+using TrustSign.Domain.IRepositories.Identity;
+using TrustSign.Domain.IRepositories.Subscriptions;
 using iText.Kernel.Colors;
 using iText.Kernel.Font;
 using iText.Kernel.Pdf;
@@ -6,13 +14,6 @@ using iText.Layout;
 using iText.Layout.Borders;
 using iText.Layout.Element;
 using iText.Layout.Properties;
-using TrustSign.Application.Shared.Pdf;
-using TrustSign.Common;
-using TrustSign.Common.Enums;
-using TrustSign.Domain.Entities.Identity;
-using TrustSign.Domain.Entities.Subscriptions;
-using TrustSign.Domain.IRepositories.Identity;
-using TrustSign.Domain.IRepositories.Subscriptions;
 
 namespace TrustSign.Application.Modules.Subscriptions;
 

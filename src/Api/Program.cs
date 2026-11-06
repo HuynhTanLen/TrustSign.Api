@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
-using TrustSign.Api.Errors;
+using TrustSign.Api.Http;
 using TrustSign.Api.Observability;
 using TrustSign.Api.Security;
 using TrustSign.Application.DependencyInjection;

@@ -4,6 +4,7 @@ using TrustSign.Application.Modules.Contracts;
 using TrustSign.Application.Modules.Identity;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories.Identity;
 

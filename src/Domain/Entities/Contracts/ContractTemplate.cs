@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using TrustSign.Common;
+using TrustSign.Common.Errors;
 
 namespace TrustSign.Domain.Entities.Contracts;
 

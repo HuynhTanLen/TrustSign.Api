@@ -1,7 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using iText.Kernel.Pdf;
-using iText.Kernel.Pdf.Canvas.Parser;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Contracts;
@@ -9,11 +7,14 @@ using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Contracts;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories;
 using TrustSign.Domain.IRepositories.Contracts;
 using TrustSign.Domain.IRepositories.Identity;
+using iText.Kernel.Pdf;
+using iText.Kernel.Pdf.Canvas.Parser;
 
 namespace TrustSign.Api.Tests;
 

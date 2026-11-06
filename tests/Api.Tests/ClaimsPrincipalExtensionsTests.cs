@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using TrustSign.Api.Security;
 using TrustSign.Common;
+using TrustSign.Common.Security;
 
 namespace TrustSign.Api.Tests;
 

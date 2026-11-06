@@ -1,4 +1,4 @@
-namespace TrustSign.Common;
+namespace TrustSign.Common.Errors;
 
 /// <summary>Danh mục lỗi nghiệp vụ của module Subscriptions (F17–F20).</summary>
 public static class SubscriptionErrors

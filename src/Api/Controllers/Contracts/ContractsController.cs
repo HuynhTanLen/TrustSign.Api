@@ -2,12 +2,13 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TrustSign.Api.Errors;
+using TrustSign.Api.Http;
 using TrustSign.Api.Security;
 using TrustSign.Application.Modules.Contracts;
 using TrustSign.Application.Modules.Identity;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Contracts;
 
 namespace TrustSign.Api.Controllers.Contracts;

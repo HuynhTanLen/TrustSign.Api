@@ -1,4 +1,4 @@
-namespace TrustSign.Common;
+namespace TrustSign.Common.Errors;
 
 /// <summary>Danh mục lỗi nghiệp vụ của module Identity. Thêm lỗi mới ở đây để mã lỗi không bị trùng.</summary>
 public static class IdentityErrors

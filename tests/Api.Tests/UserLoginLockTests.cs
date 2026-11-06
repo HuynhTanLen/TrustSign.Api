@@ -1,6 +1,8 @@
-using TrustSign.Domain.Entities.Identity;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
+using TrustSign.Domain.Entities.Identity;
+
 namespace TrustSign.Api.Tests;
 
 public sealed class UserLoginLockTests

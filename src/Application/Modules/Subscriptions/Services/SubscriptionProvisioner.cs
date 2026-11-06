@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using TrustSign.Common;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Subscriptions;
 using TrustSign.Domain.IRepositories.Subscriptions;
 

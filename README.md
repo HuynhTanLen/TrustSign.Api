@@ -10,10 +10,10 @@ Hiện tại hệ thống đã hoàn thành Mốc M1: đăng ký/xác minh email
 
 ```
 src/
-  Common/        Result, Error, danh mục lỗi, enum, tên claim. Không phụ thuộc project nào.
+  Common/        Result, Error; Errors/ (danh mục lỗi), Enums/, Validation/ (email, SĐT, MST), Security/ (tên claim). Không phụ thuộc project nào.
   Domain/        Entities, IRepositories, Repositories (DbContext + EF Core), Migrations.
   Application/   Modules/<Module>/ (service, interface, DTO), DependencyInjection.
-  Api/           Controllers, Security (JWT, rate limit), Errors (Problem Details), Observability, Program.cs.
+  Api/           Controllers, Security (JWT, rate limit), Http (đổi lỗi nghiệp vụ sang HTTP status + Problem Details), Observability, Program.cs.
 tests/
   Api.Tests/     xUnit.
 ```
@@ -34,7 +34,8 @@ Chiều phụ thuộc: `Api → Application → Domain → Common`.
 
 Quy ước đặt mã của một module:
 
-- Service, interface và DTO: `src/Application/Modules/<Module>/`; file `<Module>Module.cs` đăng ký DI của module.
+- Service, interface và DTO: `src/Application/Modules/<Module>/`, chia thư mục con `Abstractions/` (interface), `Services/` (cài đặt), `Dtos/` (cả request lẫn response), `Options/`, và khi cần `Mapping/`, `Security/`. Mọi file trong module dùng chung namespace `TrustSign.Application.Modules.<Module>`. File `<Module>Module.cs` ở gốc module đăng ký DI.
+- Danh mục lỗi của module: `src/Common/Errors/<Module>Errors.cs`.
 - Entity và repository: `src/Domain/Entities/<Module>/`, `src/Domain/IRepositories/<Module>/`, `src/Domain/Repositories/<Module>/`.
 - Cấu hình bảng: `src/Domain/Repositories/Configurations/<Module>/`, mỗi bảng khai schema bằng hằng trong `DbSchemas`.
 - Controller: `src/Api/Controllers/<Module>/`.

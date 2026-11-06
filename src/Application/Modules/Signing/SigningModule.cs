@@ -9,5 +9,6 @@ namespace TrustSign.Application.Modules.Signing;
 /// </summary>
 public static class SigningModule
 {
-    public static IServiceCollection AddSigningModule(this IServiceCollection services) => services;
+    public static IServiceCollection AddSigningModule(this IServiceCollection services) =>
+        services.AddScoped<ISigningSessionService, SigningSessionService>();
 }

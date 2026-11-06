@@ -8,6 +8,7 @@ using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Contracts;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories;

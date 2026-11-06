@@ -7,6 +7,7 @@ using TrustSign.Api.Security;
 using TrustSign.Application.Modules.Identity;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Security;
 
 namespace TrustSign.Api.Tests;
 

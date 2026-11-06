@@ -5,6 +5,8 @@ using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
+using TrustSign.Common.Validation;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories.Identity;
 

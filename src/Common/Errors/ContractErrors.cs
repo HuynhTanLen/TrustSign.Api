@@ -1,4 +1,4 @@
-namespace TrustSign.Common;
+namespace TrustSign.Common.Errors;
 
 /// <summary>Danh mục lỗi nghiệp vụ của module Contracts (F02–F05, F09, F21–F23).</summary>
 public static class ContractErrors

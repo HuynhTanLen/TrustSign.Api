@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Security;
 
 namespace TrustSign.Application.Modules.Identity;
 
