@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TrustSign.Api.Errors;
@@ -14,6 +16,12 @@ namespace TrustSign.Api.Controllers.Contracts;
 [Route("api/contracts")]
 public sealed class ContractsController(IContractService contractService) : ControllerBase
 {
+    // Multipart không tự bind được danh sách object, nên người nhận đi kèm dưới dạng một trường JSON.
+    private static readonly JsonSerializerOptions SignersJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     [Authorize(Policy = AuthorizationPolicies.TenantMember)]
     [HttpGet]
     public async Task<IActionResult> List(
@@ -77,6 +85,7 @@ public sealed class ContractsController(IContractService contractService) : Cont
     public async Task<IActionResult> Upload(
         [FromForm] IFormFile? file,
         [FromForm] string? title,
+        [FromForm] string? signers,
         CancellationToken cancel)
     {
         if (User.GetTenantId() is not { } tenantId ||
@@ -90,11 +99,24 @@ public sealed class ContractsController(IContractService contractService) : Cont
             return this.ToProblem(ContractErrors.InvalidPdfFile);
         }
 
+        List<SetSignerItemDto>? signerItems = null;
+        if (!string.IsNullOrWhiteSpace(signers))
+        {
+            try
+            {
+                signerItems = JsonSerializer.Deserialize<List<SetSignerItemDto>>(signers, SignersJsonOptions);
+            }
+            catch (JsonException)
+            {
+                return this.ToProblem(ContractErrors.InvalidSigners);
+            }
+        }
+
         await using MemoryStream ms = new((int)file.Length);
         await file.CopyToAsync(ms, cancel);
 
-        Result<CreatedContractResponseDto> result =
-            await contractService.UploadDraftAsync(tenantId, userId, title ?? string.Empty, ms.ToArray(), cancel);
+        Result<CreatedContractResponseDto> result = await contractService.UploadDraftAsync(
+            tenantId, userId, title ?? string.Empty, ms.ToArray(), signerItems, cancel);
 
         return result.IsSuccess
             ? StatusCode(StatusCodes.Status201Created, result.Value)

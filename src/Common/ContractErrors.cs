@@ -27,6 +27,12 @@ public static class ContractErrors
     public static readonly Error InvalidSigners =
         Error.Validation("Contract.InvalidSigners", "Hợp đồng phải có từ 1 đến 5 người nhận với đầy đủ họ tên và địa chỉ email hợp lệ.");
 
+    public static Error InvalidSignerName(int order) =>
+        Error.Validation("Contract.InvalidSignerName", $"Người nhận thứ {order}: họ tên phải từ 1 đến 100 ký tự.");
+
+    public static Error InvalidSignerEmail(int order) =>
+        Error.Validation("Contract.InvalidSignerEmail", $"Người nhận thứ {order}: địa chỉ email không hợp lệ.");
+
     public static readonly Error AtLeastOneSignerRequired =
         Error.Validation("Contract.NoSigner", "Hợp đồng phải có ít nhất một người ký (Signer).");
 

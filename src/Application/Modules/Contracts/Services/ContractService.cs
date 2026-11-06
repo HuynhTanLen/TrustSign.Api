@@ -156,6 +156,7 @@ internal sealed class ContractService(
             template.Id,
             code,
             pdfBytes,
+            request.Signers,
             now,
             cancel);
     }
@@ -165,6 +166,7 @@ internal sealed class ContractService(
         Guid userId,
         string title,
         ReadOnlyMemory<byte> pdfBytes,
+        IReadOnlyList<SetSignerItemDto>? signers,
         CancellationToken cancel = default)
     {
         string trimmedTitle = title?.Trim() ?? string.Empty;
@@ -188,6 +190,7 @@ internal sealed class ContractService(
             templateId: null,
             code,
             pdfBytes,
+            signers,
             now,
             cancel);
     }
@@ -207,25 +210,8 @@ internal sealed class ContractService(
         }
 
         Contract contract = accessResult.Value;
-        IReadOnlyList<SetSignerItemDto> items = request.Signers ?? [];
-        List<ContractSignerSpec> specs = items
-            .OrderBy(s => s.Order ?? int.MaxValue)
-            .Select(s => new ContractSignerSpec(
-                s.FullName,
-                s.Email,
-                s.PageNumber,
-                s.BoxX,
-                s.BoxY,
-                s.BoxWidth,
-                s.BoxHeight,
-                s.Role,
-                s.Phone,
-                s.Organization,
-                s.Title))
-            .ToList();
-
         DateTimeOffset now = timeProvider.GetUtcNow();
-        Result setResult = contract.SetSigners(specs, now);
+        Result setResult = contract.SetSigners(ToSpecs(request.Signers), now);
         if (setResult.IsFailure)
         {
             return setResult.Error;
@@ -421,6 +407,23 @@ internal sealed class ContractService(
         return contract;
     }
 
+    private static List<ContractSignerSpec> ToSpecs(IReadOnlyList<SetSignerItemDto>? items) =>
+        (items ?? [])
+            .OrderBy(s => s.Order ?? int.MaxValue)
+            .Select(s => new ContractSignerSpec(
+                s.FullName,
+                s.Email,
+                s.PageNumber,
+                s.BoxX,
+                s.BoxY,
+                s.BoxWidth,
+                s.BoxHeight,
+                s.Role,
+                s.Phone,
+                s.Organization,
+                s.Title))
+            .ToList();
+
     private async Task<Result<CreatedContractResponseDto>> PersistDraftAsync(
         Guid tenantId,
         Guid userId,
@@ -428,6 +431,7 @@ internal sealed class ContractService(
         Guid? templateId,
         string code,
         ReadOnlyMemory<byte> pdfBytes,
+        IReadOnlyList<SetSignerItemDto>? signers,
         DateTimeOffset now,
         CancellationToken cancel)
     {
@@ -454,6 +458,16 @@ internal sealed class ContractService(
         if (draftResult.IsFailure)
         {
             return draftResult.Error;
+        }
+
+        // Kiểm người nhận trước khi lưu file và ghi DB: sai thì không để lại bản nháp dở dang.
+        if (signers is not null)
+        {
+            Result setSigners = draftResult.Value.SetSigners(ToSpecs(signers), now);
+            if (setSigners.IsFailure)
+            {
+                return setSigners.Error;
+            }
         }
 
         await fileStorage.SaveAsync(storageKey, pdfBytes, cancel);
@@ -620,7 +634,7 @@ internal sealed class ContractService(
             prevHash,
             c.CreatedAt,
             "Khởi tạo hợp đồng nháp",
-            $"Người tạo: {c.CreatorName} · SHA-256 tài liệu: {c.OriginalFileHash[..16]}…");
+            $"Người tạo: {c.CreatorName}");
 
         if (c.SentAt.HasValue)
         {

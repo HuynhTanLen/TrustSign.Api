@@ -142,12 +142,17 @@ public sealed class Contract
             string fullName = spec.FullName?.Trim() ?? string.Empty;
             string email = spec.Email?.Trim() ?? string.Empty;
 
-            if (fullName.Length is 0 or > 100 || !EmailValidator.IsValid(email))
+            int order = i + 1;
+            if (fullName.Length is 0 or > 100)
             {
-                return ContractErrors.InvalidSigners;
+                return ContractErrors.InvalidSignerName(order);
             }
 
-            int order = i + 1;
+            if (!EmailValidator.IsValid(email))
+            {
+                return ContractErrors.InvalidSignerEmail(order);
+            }
+
             int page = spec.PageNumber ?? 1;
 
             // Tọa độ mặc định xếp ngang/dọc ở cuối trang A4 (595 x 842 pt) nếu chưa chỉ định

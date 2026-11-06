@@ -63,7 +63,8 @@ public sealed record ContractDetailDto(
 public sealed record CreateFromTemplateRequestDto(
     Guid TemplateId,
     string Title,
-    Dictionary<string, string>? Values);
+    Dictionary<string, string>? Values,
+    IReadOnlyList<SetSignerItemDto>? Signers = null);
 
 public sealed record CreatedContractResponseDto(Guid ContractId);
 
