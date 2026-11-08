@@ -42,7 +42,9 @@ internal sealed class SigningSessionService(
         Tenant? tenant = await tenants.FindByIdAsync(contract.TenantId, cancel);
         string senderCompany = tenant?.Name ?? "Doanh nghiệp đối tác";
 
+        // Chỉ người ký có ô ký trên PDF; người duyệt và Cc không có (nên trang ký không bắt họ vẽ chữ ký).
         List<SigningFieldDto> fields = contract.Signers
+            .Where(s => s.Role == RecipientRole.Signer)
             .OrderBy(s => s.SignOrder)
             .Select(s => new SigningFieldDto(s.SignOrder, s.FullName, s.Id == signer.Id, s.Status == SignerStatus.Signed))
             .ToList();

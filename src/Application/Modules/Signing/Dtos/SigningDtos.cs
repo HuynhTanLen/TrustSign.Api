@@ -23,6 +23,7 @@ public sealed record SigningSessionDto(
     string State,
     DateTimeOffset? DueAt,
     IReadOnlyList<SigningFieldDto> Fields,
-    string? DocumentUrl);
+    string? DocumentUrl,
+    string Role);
 
 public sealed record OtpVerificationDto(bool Verified, int AttemptsLeft);
