@@ -27,7 +27,7 @@ public sealed class EkycTests
             _repo,
             _users,
             _storage,
-            new NoOpAuditLogger(),
+            new InMemoryAuditLogger(),
             Options.Create(new ContractStorageOptions()),
             _clock);
     }
@@ -180,11 +180,5 @@ public sealed class EkycTests
         }
 
         public Task SaveChangesAsync(CancellationToken cancel) => Task.CompletedTask;
-    }
-
-    private sealed class NoOpAuditLogger : IAuditLogger
-    {
-        public Task LogAsync(Guid? tenantId, Guid? actorUserId, string action, string resourceType, string resourceId, object? payload = null, CancellationToken cancel = default) =>
-            Task.CompletedTask;
     }
 }

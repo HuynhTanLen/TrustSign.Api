@@ -91,6 +91,10 @@ namespace TrustSign.Domain.Migrations
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_audit_events_tenant_id");
 
+                    b.HasIndex("ResourceType", "ResourceId", "PrevHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_audit_events_resource_type_resource_id_prev_hash");
+
                     b.ToTable("audit_events", "audit");
                 });
 
@@ -260,6 +264,11 @@ namespace TrustSign.Domain.Migrations
                     b.Property<int>("SignOrder")
                         .HasColumnType("integer")
                         .HasColumnName("sign_order");
+
+                    b.Property<string>("SignatureStorageKey")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("signature_storage_key");
 
                     b.Property<DateTimeOffset?>("SignedAt")
                         .HasColumnType("timestamp with time zone")

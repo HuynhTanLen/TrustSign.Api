@@ -14,7 +14,7 @@ public interface ISigningSessionService
 
     Result<OtpVerificationDto> VerifyOtp(string token, string? code);
 
-    Task<Result> SignAsync(string token, CancellationToken cancel);
+    Task<Result> SignAsync(string token, string? signaturePng, CancellationToken cancel);
 
     Task<Result> DeclineAsync(string token, string? reason, CancellationToken cancel);
 }

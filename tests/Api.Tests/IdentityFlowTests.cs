@@ -65,7 +65,7 @@ public sealed class IdentityFlowTests
             _issuer,
             _emails,
             new NoOpSubscriptionProvisioner(),
-            new NoOpAuditLogger(),
+            new InMemoryAuditLogger(),
             smtpOptions,
             _clock);
     }
@@ -742,17 +742,5 @@ public sealed class IdentityFlowTests
     {
         public Task<Result> ProvisionTrialSubscriptionAsync(Guid tenantId, DateTimeOffset now, CancellationToken cancel = default) =>
             Task.FromResult(Result.Success());
-    }
-
-    private sealed class NoOpAuditLogger : IAuditLogger
-    {
-        public Task LogAsync(
-            Guid? tenantId,
-            Guid? actorUserId,
-            string action,
-            string resourceType,
-            string resourceId,
-            object? payload = null,
-            CancellationToken cancel = default) => Task.CompletedTask;
     }
 }

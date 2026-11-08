@@ -58,7 +58,8 @@ internal sealed class SigningSessionService(
             DetermineState(contract, signer, token, now),
             contract.DueAt,
             fields,
-            fileStorage.CreateShortLivedDocumentUrl(contract.TenantId, contract.Id, now));
+            fileStorage.CreateShortLivedDocumentUrl(contract.TenantId, contract.Id, now),
+            signer.Role.ToString());
     }
 
     public async Task<Result<DateTimeOffset>> RequestOtpAsync(string token, CancellationToken cancel)
@@ -128,7 +129,7 @@ internal sealed class SigningSessionService(
         return new OtpVerificationDto(false, attemptsLeft);
     }
 
-    public async Task<Result> SignAsync(string token, CancellationToken cancel)
+    public async Task<Result> SignAsync(string token, string? signaturePng, CancellationToken cancel)
     {
         if (!fileStorage.ValidateSigningToken(token, out Guid contractId, out Guid signerId, timeProvider.GetUtcNow()))
         {
@@ -140,13 +141,8 @@ internal sealed class SigningSessionService(
             return SigningErrors.OtpRequired;
         }
 
-        Result result = await contractService.ProcessSignOrApproveAsync(contractId, signerId, cancel);
-        if (result.IsSuccess)
-        {
-            cache.Remove(VerifiedKey(token));
-        }
-
-        return result;
+        // Giữ cờ đã xác thực OTP (tự hết sau 5 phút) để lần bấm ký thứ hai nhận về thành công thay vì bị đòi OTP.
+        return await contractService.ProcessSignOrApproveAsync(contractId, signerId, signaturePng, cancel);
     }
 
     public async Task<Result> DeclineAsync(string token, string? reason, CancellationToken cancel)

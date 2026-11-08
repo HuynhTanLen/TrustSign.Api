@@ -34,11 +34,11 @@ public sealed class SigningController(ISigningSessionService signing) : Controll
             : this.ToProblem(result.Error);
     }
 
-    // SignContractRequestDto giữ nguyên hợp đồng API; nội dung hiện chưa dùng.
+    // IdempotencyKey chưa dùng: ký lặp đã an toàn vì người đã ký thì nhận lại thành công (TC07).
     [HttpPost("{token}/sign")]
     public async Task<IActionResult> Sign(string token, [FromBody] SignContractRequestDto request, CancellationToken cancel)
     {
-        Result result = await signing.SignAsync(token, cancel);
+        Result result = await signing.SignAsync(token, request.SignaturePng, cancel);
         return result.IsSuccess ? Ok(new { success = true }) : this.ToProblem(result.Error);
     }
 

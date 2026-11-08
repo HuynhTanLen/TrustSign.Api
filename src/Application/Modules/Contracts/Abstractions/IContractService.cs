@@ -73,6 +73,7 @@ public interface IContractService
     Task<Result> ProcessSignOrApproveAsync(
         Guid contractId,
         Guid signerId,
+        string? signaturePng,
         CancellationToken cancel = default);
 
     Task<Result> DeclineAsync(

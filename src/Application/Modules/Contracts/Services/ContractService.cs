@@ -1,14 +1,16 @@
 using System.Net;
 using System.Security.Cryptography;
-using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using TrustSign.Application.Modules.Audit;
 using TrustSign.Application.Modules.Identity;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
 using TrustSign.Common.Errors;
+using TrustSign.Domain.Entities.Audit;
 using TrustSign.Domain.Entities.Contracts;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories;
@@ -26,11 +28,30 @@ internal sealed class ContractService(
     IQuotaService quotaService,
     IUnitOfWork unitOfWork,
     IEmailSender emailSender,
+    IAuditLogger audit,
     IOptions<SmtpOptions> smtpOptions,
     TimeProvider timeProvider,
     ILogger<ContractService> logger) : IContractService
 {
     private static readonly byte[] PdfMagicBytes = "%PDF-"u8.ToArray();
+    private static readonly byte[] PngMagicBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    private const string PngDataUrlPrefix = "data:image/png;base64,";
+    private const int MaxSignatureBytes = 512 * 1024;
+
+    // Nhật ký hash-chain của hợp đồng (F11, AUD-01): mỗi hợp đồng là một chuỗi riêng.
+    private const string AuditResourceType = "Contract";
+    private static readonly Dictionary<string, string> AuditTitles = new()
+    {
+        ["contract.created"] = "Khởi tạo hợp đồng nháp",
+        ["contract.sent"] = "Gửi hợp đồng đi ký",
+        ["contract.signed"] = "Ký hợp đồng",
+        ["contract.approved"] = "Duyệt hợp đồng",
+        ["contract.completed"] = "Hoàn tất hợp đồng",
+        ["contract.declined"] = "Từ chối ký",
+        ["contract.cancelled"] = "Hủy hợp đồng",
+    };
+
+    private sealed record ContractAuditPayload(string Detail, string FileHash);
     private readonly SmtpOptions _smtpOptions = smtpOptions.Value;
 
     public async Task<Result<IReadOnlyList<ContractListItemDto>>> ListAsync(
@@ -99,7 +120,10 @@ internal sealed class ContractService(
             .ToList();
 
         ContractListItemDto summary = ToListItemDto(contract);
-        IReadOnlyList<ContractEventDto> events = BuildTimelineEvents(contract);
+        IReadOnlyList<ContractEventDto> events = (await audit.ListForResourceAsync(
+                tenantId, AuditResourceType, contract.Id.ToString(), cancel))
+            .Select(ToEventDto)
+            .ToList();
 
         return new ContractDetailDto(
             summary.Id,
@@ -254,6 +278,15 @@ internal sealed class ContractService(
                 return quota.Error;
             }
 
+            ContractSigner? first = contract.Signers.FirstOrDefault(s => s.Status == SignerStatus.Current);
+            await LogContractAsync(
+                contract,
+                actorUserId,
+                "contract.sent",
+                first is null
+                    ? "Đã khóa nội dung hợp đồng"
+                    : $"Đã khóa nội dung và gửi lượt #{first.SignOrder} tới {first.FullName} ({first.Email})",
+                cancel);
             await contracts.SaveChangesAsync(cancel);
             return Result.Success();
         }, cancel);
@@ -298,6 +331,7 @@ internal sealed class ContractService(
             return cancelResult.Error;
         }
 
+        await LogContractAsync(contract, actorUserId, "contract.cancelled", "Hợp đồng đã bị hủy và dừng luồng ký.", cancel);
         await contracts.SaveChangesAsync(cancel);
         return Result.Success();
     }
@@ -332,6 +366,7 @@ internal sealed class ContractService(
     public async Task<Result> ProcessSignOrApproveAsync(
         Guid contractId,
         Guid signerId,
+        string? signaturePng,
         CancellationToken cancel = default)
     {
         Contract? contract = await contracts.FindByIdAsync(contractId, cancel);
@@ -340,27 +375,68 @@ internal sealed class ContractService(
             return ContractErrors.ContractNotFound;
         }
 
+        ContractSigner? signer = contract.Signers.FirstOrDefault(s => s.Id == signerId);
+        if (signer is null)
+        {
+            return ContractErrors.SignerNotFound;
+        }
+
+        // Bấm ký lần hai (hoặc gửi lại khi mất phản hồi) trả thành công mà không ghi thêm chữ ký (TC07).
+        if (signer.Status == SignerStatus.Signed)
+        {
+            return Result.Success();
+        }
+
+        byte[]? signatureBytes = null;
+        string? signatureKey = null;
+        if (signer.Role == RecipientRole.Signer)
+        {
+            signatureBytes = DecodeSignaturePng(signaturePng);
+            if (signatureBytes is null)
+            {
+                return SigningErrors.SignatureImageInvalid;
+            }
+
+            signatureKey = $"tenants/{contract.TenantId:D}/contracts/{contract.Id:D}/signatures/{signer.Id:D}.png";
+        }
+
         DateTimeOffset now = timeProvider.GetUtcNow();
-        Result advance = contract.SignOrApproveCurrent(signerId, now);
+        Result advance = contract.SignOrApproveCurrent(signerId, now, signatureKey);
         if (advance.IsFailure)
         {
             return advance.Error;
         }
 
+        if (signatureBytes is not null)
+        {
+            await fileStorage.SaveAsync(signatureKey!, signatureBytes, cancel);
+        }
+
+        bool isApprover = signer.Role == RecipientRole.Approver;
+        await LogContractAsync(
+            contract,
+            null,
+            isApprover ? "contract.approved" : "contract.signed",
+            $"Lượt #{signer.SignOrder}: {signer.FullName} ({signer.Email}) đã {(isApprover ? "duyệt" : "ký")}",
+            cancel);
+
+        if (contract.Status == ContractStatus.Completed)
+        {
+            await LogContractAsync(contract, null, "contract.completed", "Tất cả người ký và duyệt đã hoàn thành lượt của mình.", cancel);
+        }
+
+        // Lưu trước rồi mới gửi email: lưu lỗi thì không ai nhận thư mời cho một lượt chưa được ghi nhận.
+        await contracts.SaveChangesAsync(cancel);
+
         if (contract.Status == ContractStatus.Completed)
         {
             await NotifyCcRecipientsAsync(contract, cancel);
         }
-        else if (contract.Status == ContractStatus.Signing)
+        else if (contract.Signers.FirstOrDefault(s => s.Status == SignerStatus.Current) is { } next)
         {
-            ContractSigner? current = contract.Signers.FirstOrDefault(s => s.Status == SignerStatus.Current);
-            if (current is not null)
-            {
-                await TrySendFirstSignerNotificationAsync(contract, current, cancel);
-            }
+            await TrySendFirstSignerNotificationAsync(contract, next, cancel);
         }
 
-        await contracts.SaveChangesAsync(cancel);
         return Result.Success();
     }
 
@@ -383,7 +459,16 @@ internal sealed class ContractService(
             return decline.Error;
         }
 
+        ContractSigner signer = contract.Signers.First(s => s.Id == signerId);
+        await LogContractAsync(
+            contract,
+            null,
+            "contract.declined",
+            $"Lượt #{signer.SignOrder}: {signer.FullName} ({signer.Email}) từ chối. Lý do: {signer.DeclineReason}",
+            cancel);
         await contracts.SaveChangesAsync(cancel);
+
+        await NotifyCreatorDeclinedAsync(contract, signer, cancel);
         return Result.Success();
     }
 
@@ -473,6 +558,7 @@ internal sealed class ContractService(
 
         await fileStorage.SaveAsync(storageKey, pdfBytes, cancel);
         await contracts.AddAsync(draftResult.Value, cancel);
+        await LogContractAsync(draftResult.Value, userId, "contract.created", $"Người tạo: {creatorName}", cancel);
 
         return new CreatedContractResponseDto(contractId);
     }
@@ -625,54 +711,91 @@ internal sealed class ContractService(
             currentSigner);
     }
 
-    private static IReadOnlyList<ContractEventDto> BuildTimelineEvents(Contract c)
+    private Task LogContractAsync(Contract contract, Guid? actorUserId, string action, string detail, CancellationToken cancel) =>
+        audit.LogAsync(
+            contract.TenantId,
+            actorUserId,
+            action,
+            AuditResourceType,
+            contract.Id.ToString(),
+            new ContractAuditPayload(detail, contract.CurrentFileHash),
+            cancel);
+
+    private static ContractEventDto ToEventDto(AuditEvent e)
     {
-        List<ContractEventDto> events = [];
-        string prevHash = new('0', 64);
+        string detail = e.PayloadJson is null
+            ? string.Empty
+            : JsonSerializer.Deserialize<ContractAuditPayload>(e.PayloadJson)?.Detail ?? string.Empty;
 
-        prevHash = AppendEvent(
-            events,
-            prevHash,
-            c.CreatedAt,
-            "Khởi tạo hợp đồng nháp",
-            $"Người tạo: {c.CreatorName}");
-
-        if (c.SentAt.HasValue)
-        {
-            ContractSigner? first = c.Signers.OrderBy(s => s.SignOrder).FirstOrDefault();
-            prevHash = AppendEvent(
-                events,
-                prevHash,
-                c.SentAt.Value,
-                "Gửi hợp đồng đi ký",
-                first is not null
-                    ? $"Đã khóa nội dung và gửi lượt ký #1 tới {first.FullName} ({first.Email})"
-                    : "Đã khóa nội dung hợp đồng");
-        }
-
-        if (c.CancelledAt.HasValue)
-        {
-            AppendEvent(
-                events,
-                prevHash,
-                c.CancelledAt.Value,
-                "Hủy hợp đồng",
-                "Hợp đồng đã bị hủy và dừng luồng ký.");
-        }
-
-        return events;
+        return new ContractEventDto(e.CreatedAt, AuditTitles.GetValueOrDefault(e.Action, e.Action), detail, e.Hash);
     }
 
-    private static string AppendEvent(
-        List<ContractEventDto> list,
-        string prevHash,
-        DateTimeOffset at,
-        string title,
-        string detail)
+    /// <summary>Giải mã ảnh chữ ký từ data URL hoặc base64; trả null nếu không phải PNG hoặc quá 512 KB.</summary>
+    internal static byte[]? DecodeSignaturePng(string? signaturePng)
     {
-        string canonical = $"{prevHash}|{at.ToUnixTimeMilliseconds()}|{title}|{detail}";
-        string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
-        list.Add(new ContractEventDto(at, title, detail, hash));
-        return hash;
+        if (string.IsNullOrWhiteSpace(signaturePng))
+        {
+            return null;
+        }
+
+        string base64 = signaturePng.Trim();
+        if (base64.StartsWith(PngDataUrlPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            base64 = base64[PngDataUrlPrefix.Length..];
+        }
+
+        // Chặn trước khi giải mã: chuỗi base64 dài hơn mức 512 KB thì khỏi cấp bộ nhớ.
+        if (base64.Length > (MaxSignatureBytes / 3 * 4) + 4)
+        {
+            return null;
+        }
+
+        byte[] buffer = new byte[base64.Length];
+        if (!Convert.TryFromBase64String(base64, buffer, out int written) ||
+            written <= PngMagicBytes.Length ||
+            written > MaxSignatureBytes ||
+            !buffer.AsSpan(0, PngMagicBytes.Length).SequenceEqual(PngMagicBytes))
+        {
+            return null;
+        }
+
+        return buffer[..written];
+    }
+
+    private async Task NotifyCreatorDeclinedAsync(Contract contract, ContractSigner signer, CancellationToken cancel)
+    {
+        try
+        {
+            User? creator = await users.FindByIdAsync(contract.CreatedByUserId, cancel);
+            if (creator is null)
+            {
+                return;
+            }
+
+            string baseUrl = _smtpOptions.FrontendBaseUrl.TrimEnd('/');
+            string viewUrl = $"{baseUrl}/app/contracts/{contract.Id}";
+            string html = $"""
+                <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2328;line-height:1.6;">
+                  <h2 style="color:#1b3a5c;margin-bottom:12px;">Hợp đồng bị từ chối ký</h2>
+                  <p>Xin chào <strong>{WebUtility.HtmlEncode(creator.FullName)}</strong>,</p>
+                  <p><strong>{WebUtility.HtmlEncode(signer.FullName)}</strong> ({WebUtility.HtmlEncode(signer.Email)}) đã từ chối hợp đồng <strong>{WebUtility.HtmlEncode(contract.Title)}</strong> (Mã: <code>{contract.Code}</code>). Luồng ký đã dừng.</p>
+                  <p>Lý do: {WebUtility.HtmlEncode(signer.DeclineReason ?? string.Empty)}</p>
+                  <p style="margin:24px 0;">
+                    <a href="{viewUrl}" style="background:#1b3a5c;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:4px;display:inline-block;font-weight:600;">
+                      Xem hợp đồng
+                    </a>
+                  </p>
+                  <p style="font-size:12px;color:#5f6b7a;">Hệ thống hợp đồng điện tử Chữ Tín ({baseUrl}).</p>
+                </div>
+                """;
+
+            await emailSender.SendAsync(
+                new EmailMessage(creator.Email, $"[Chữ Tín] Hợp đồng bị từ chối: {contract.Code} - {contract.Title}", html),
+                cancel);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Không gửi được email báo từ chối hợp đồng {ContractCode}", contract.Code);
+        }
     }
 }

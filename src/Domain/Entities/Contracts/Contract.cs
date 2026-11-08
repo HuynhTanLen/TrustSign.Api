@@ -249,7 +249,7 @@ public sealed class Contract
     /// Ký hoặc duyệt lượt hiện tại, chuyển sang người tiếp theo (bỏ qua Cc).
     /// Nếu là người cuối cùng trong luồng ký/duyệt -> tự động chuyển trạng thái hoàn tất (Completed).
     /// </summary>
-    public Result SignOrApproveCurrent(Guid signerId, DateTimeOffset now)
+    public Result SignOrApproveCurrent(Guid signerId, DateTimeOffset now, string? signatureStorageKey = null)
     {
         if (Status is not (ContractStatus.Pending or ContractStatus.Signing))
         {
@@ -272,7 +272,7 @@ public sealed class Contract
             return ContractErrors.CcCannotSignOrApprove;
         }
 
-        current.MarkSigned(now);
+        current.MarkSigned(now, signatureStorageKey);
 
         // Tìm người tiếp theo trong luồng ký/duyệt (bỏ qua Cc)
         ContractSigner? next = _signers

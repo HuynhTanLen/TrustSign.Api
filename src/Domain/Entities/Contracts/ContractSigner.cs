@@ -49,6 +49,9 @@ public sealed class ContractSigner
 
     public string? DeclineReason { get; private set; }
 
+    /// <summary>Khóa lưu ảnh PNG chữ ký vẽ tay của người ký (SIG-04); Approver không có.</summary>
+    public string? SignatureStorageKey { get; private set; }
+
     public static ContractSigner Create(
         Guid contractId,
         int signOrder,
@@ -84,10 +87,11 @@ public sealed class ContractSigner
 
     public void ActivateTurn() => Status = SignerStatus.Current;
 
-    public void MarkSigned(DateTimeOffset now)
+    public void MarkSigned(DateTimeOffset now, string? signatureStorageKey = null)
     {
         Status = SignerStatus.Signed;
         SignedAt = now;
+        SignatureStorageKey = signatureStorageKey;
     }
 
     public void MarkDeclined(string reason, DateTimeOffset now)

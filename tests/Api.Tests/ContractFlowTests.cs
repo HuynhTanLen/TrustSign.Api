@@ -8,6 +8,7 @@ using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
 using TrustSign.Common.Errors;
+using TrustSign.Domain.Entities.Audit;
 using TrustSign.Domain.Entities.Contracts;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories;
@@ -30,6 +31,11 @@ public sealed class ContractFlowTests : IDisposable
     private readonly InMemoryContractStore _store = new();
     private readonly ConfigurableQuotaService _quota = new();
     private readonly RecordingEmailSender _emails = new();
+    private readonly InMemoryAuditLogger _audit;
+
+    // Đủ để qua kiểm tra chữ ký PNG: 8 byte đầu là magic bytes của PNG.
+    private static readonly string TestSignaturePng =
+        "data:image/png;base64," + Convert.ToBase64String([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4]);
     private readonly IContractFileStorage _fileStorage;
     private readonly IContractPdfGenerator _pdfGenerator = new ContractPdfGenerator();
     private readonly ITemplateService _templateService;
@@ -57,6 +63,7 @@ public sealed class ContractFlowTests : IDisposable
         });
 
         _fileStorage = new LocalContractFileStorage(storageOptions);
+        _audit = new InMemoryAuditLogger(_clock);
         _templateService = new TemplateService(_store, _store, _clock);
         _contractService = new ContractService(
             _store,
@@ -67,6 +74,7 @@ public sealed class ContractFlowTests : IDisposable
             _quota,
             _store,
             _emails,
+            _audit,
             smtpOptions,
             _clock,
             NullLogger<ContractService>.Instance);
@@ -572,8 +580,18 @@ public sealed class ContractFlowTests : IDisposable
         ContractSigner s4 = contract.Signers.First(s => s.SignOrder == 4);
 
         // Lượt 1: Signer 1 ký -> chuyển lượt sang Approver 2
-        Result sign1 = await _contractService.ProcessSignOrApproveAsync(contractId, s1.Id, Cancel);
+        Result noSignature = await _contractService.ProcessSignOrApproveAsync(contractId, s1.Id, null, Cancel);
+        Assert.Equal(SigningErrors.SignatureImageInvalid, noSignature.Error);
+
+        Result sign1 = await _contractService.ProcessSignOrApproveAsync(contractId, s1.Id, TestSignaturePng, Cancel);
         Assert.True(sign1.IsSuccess);
+        Assert.NotNull(await _fileStorage.ReadAsync(s1.SignatureStorageKey!, Cancel));
+
+        // Bấm ký lần 2: thành công nhưng không thêm sự kiện hay chuyển lượt (TC07)
+        int eventsBefore = _audit.Events.Count;
+        Result sign1Again = await _contractService.ProcessSignOrApproveAsync(contractId, s1.Id, TestSignaturePng, Cancel);
+        Assert.True(sign1Again.IsSuccess);
+        Assert.Equal(eventsBefore, _audit.Events.Count);
 
         Result<ContractDetailDto> detail2 = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
         Assert.Equal(ContractStatus.Signing.ToString(), detail2.Value.Status);
@@ -582,7 +600,7 @@ public sealed class ContractFlowTests : IDisposable
         Assert.Equal(SignerStatus.Waiting.ToString(), detail2.Value.Signers[2].Status);
 
         // Lượt 2: Approver 2 duyệt -> chuyển lượt sang Signer 3
-        Result approve2 = await _contractService.ProcessSignOrApproveAsync(contractId, s2.Id, Cancel);
+        Result approve2 = await _contractService.ProcessSignOrApproveAsync(contractId, s2.Id, null, Cancel);
         Assert.True(approve2.IsSuccess);
 
         Result<ContractDetailDto> detail3 = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
@@ -590,7 +608,7 @@ public sealed class ContractFlowTests : IDisposable
         Assert.Equal(SignerStatus.Current.ToString(), detail3.Value.Signers[2].Status);
 
         // Lượt 3: Signer 3 ký -> người ký/duyệt cuối cùng -> Hợp đồng hoàn tất (Completed), gửi email cho người nhận Cc (s4)
-        Result sign3 = await _contractService.ProcessSignOrApproveAsync(contractId, s3.Id, Cancel);
+        Result sign3 = await _contractService.ProcessSignOrApproveAsync(contractId, s3.Id, TestSignaturePng, Cancel);
         Assert.True(sign3.IsSuccess);
 
         Result<ContractDetailDto> detailDone = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
@@ -601,6 +619,39 @@ public sealed class ContractFlowTests : IDisposable
         Assert.NotNull(_emails.LastSent);
         Assert.Equal("cc4@company.vn", _emails.LastSent!.To);
         Assert.Contains("Bản sao hợp đồng hoàn tất", _emails.LastSent!.Subject);
+
+        // Dòng thời gian đọc từ chuỗi audit của chính hợp đồng này (AUD-01)
+        Assert.Equal(
+            ["Khởi tạo hợp đồng nháp", "Gửi hợp đồng đi ký", "Ký hợp đồng", "Duyệt hợp đồng", "Ký hợp đồng", "Hoàn tất hợp đồng"],
+            detailDone.Value.Events.Select(e => e.Title));
+        Assert.True(AuditEvent.VerifyChain(await _audit.ListForResourceAsync(_tenantA, "Contract", contractId.ToString(), Cancel)));
+    }
+
+    [Fact]
+    public async Task Decline_stops_flow_logs_event_and_emails_creator()
+    {
+        byte[] pdf = _pdfGenerator.RenderTemplateToPdf("HĐ", "HD-DECLINE", "Nội dung", _clock.GetUtcNow());
+        Guid contractId = (await _contractService.UploadDraftAsync(
+            _tenantA,
+            _ownerUserId,
+            "Hợp đồng bị từ chối",
+            pdf,
+            [new SetSignerItemDto("Nguyễn Văn Ký", "signer@company.vn", 1)],
+            Cancel)).Value.ContractId;
+        await _contractService.SendForSigningAsync(
+            _tenantA, _ownerUserId, TenantRole.TenantOwner, contractId,
+            new SendContractRequestDto(_clock.GetUtcNow().AddDays(3)), Cancel);
+        Guid signerId = (await _store.FindByIdAsync(_tenantA, contractId, Cancel))!.Signers[0].Id;
+
+        Result decline = await _contractService.DeclineAsync(contractId, signerId, "Sai giá trị hợp đồng", Cancel);
+
+        Assert.True(decline.IsSuccess);
+        Assert.Equal("owner@chutin.vn", _emails.LastSent!.To);
+        Assert.Contains("bị từ chối", _emails.LastSent!.Subject);
+        ContractDetailDto detail = (await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel)).Value;
+        Assert.Equal(ContractStatus.Declined.ToString(), detail.Status);
+        Assert.Equal("Từ chối ký", detail.Events[^1].Title);
+        Assert.Contains("Sai giá trị hợp đồng", detail.Events[^1].Detail);
     }
 
 

@@ -50,10 +50,10 @@ public sealed class SigningSessionServiceTests
     {
         SigningSessionService service = CreateService();
 
-        Result noOtp = await service.SignAsync(NewToken(), TestContext.Current.CancellationToken);
+        Result noOtp = await service.SignAsync(NewToken(), null, TestContext.Current.CancellationToken);
         Assert.Equal(SigningErrors.OtpRequired, noOtp.Error);
 
-        Result badToken = await service.SignAsync("not-a-token", TestContext.Current.CancellationToken);
+        Result badToken = await service.SignAsync("not-a-token", null, TestContext.Current.CancellationToken);
         Assert.Equal(SigningErrors.TokenInvalid, badToken.Error);
         Assert.Equal(SigningErrors.TokenInvalid, service.VerifyOtp("not-a-token", "1").Error);
     }
