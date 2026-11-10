@@ -9,7 +9,9 @@ internal static class UserMappingExtensions
     public static UserProfileDto ToProfileDto(
         this User user,
         IReadOnlyList<UserTenantMembership> memberships,
-        Guid? activeTenantId = null)
+        Guid? activeTenantId = null,
+        bool googleLinked = false,
+        string? avatarUrl = null)
     {
         List<UserTenantDto> tenants = memberships
             .Select(item => new UserTenantDto(item.Tenant.Id, item.Tenant.Name, item.Membership.Role.ToString()))
@@ -29,6 +31,9 @@ internal static class UserMappingExtensions
             resolvedActive,
             tenants,
             user.PhoneNumber,
-            user.JobTitle);
+            user.JobTitle,
+            user.PasswordHash is not null,
+            googleLinked,
+            avatarUrl);
     }
 }

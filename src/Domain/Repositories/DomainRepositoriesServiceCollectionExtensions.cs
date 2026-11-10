@@ -22,11 +22,13 @@ public static class DomainRepositoriesServiceCollectionExtensions
 
         // Identity
         services.AddScoped<IUserRepository, EfUserRepository>();
+        services.AddScoped<IExternalLoginRepository, EfExternalLoginRepository>();
         services.AddScoped<IEmailVerificationTokenRepository, EfEmailVerificationTokenRepository>();
         services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
         services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<IIdentityVerificationRepository, EfIdentityVerificationRepository>();
+        services.AddScoped<IAdminDirectoryRepository, EfAdminDirectoryRepository>();
 
         // Subscriptions
         services.AddScoped<IPlanRepository, EfPlanRepository>();

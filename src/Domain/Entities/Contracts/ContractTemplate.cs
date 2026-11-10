@@ -153,7 +153,8 @@ public sealed partial class ContractTemplate
         {
             string varName = match.Groups[1].Value;
             return values is not null && values.TryGetValue(varName, out string? v)
-                ? v.Trim()
+                // Giữ "\n" đầu để giá trị nhiều dòng (VD: thông số kỹ thuật) xuống dòng dưới nhãn
+                ? v.TrimEnd().TrimStart(' ', '\t')
                 : match.Value;
         });
 

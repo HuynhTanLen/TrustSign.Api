@@ -148,6 +148,21 @@ internal sealed class SigningSessionService(
         return await contractService.ProcessSignOrApproveAsync(contractId, signerId, signaturePng, cancel);
     }
 
+    public async Task<Result> CoordinateAsync(string token, IReadOnlyList<SetSignerItemDto>? recipients, CancellationToken cancel)
+    {
+        if (!mediaSigner.TryValidateSigningToken(token, timeProvider.GetUtcNow(), out Guid contractId, out Guid signerId))
+        {
+            return SigningErrors.TokenInvalid;
+        }
+
+        if (!IsOtpVerified(token))
+        {
+            return SigningErrors.OtpRequired;
+        }
+
+        return await contractService.CoordinateAsync(contractId, signerId, recipients ?? [], cancel);
+    }
+
     public async Task<Result> DeclineAsync(string token, string? reason, CancellationToken cancel)
     {
         if (!mediaSigner.TryValidateSigningToken(token, timeProvider.GetUtcNow(), out Guid contractId, out Guid signerId))

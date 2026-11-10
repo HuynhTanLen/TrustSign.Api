@@ -52,6 +52,45 @@ public sealed class AuthController(
         return Ok(result.Value.ToResponseDto());
     }
 
+    [HttpPost("google")]
+    public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginRequestDto request, CancellationToken cancel)
+    {
+        Result<AuthSessionResultDto> result = await auth.GoogleLoginAsync(request, cancel);
+        if (result.IsFailure)
+        {
+            return this.ToProblem(result.Error);
+        }
+
+        WriteRefreshCookie(result.Value.RawRefreshToken, result.Value.RefreshExpiresAt);
+        return Ok(result.Value.ToResponseDto());
+    }
+
+    [Authorize]
+    [HttpPost("google/link")]
+    public async Task<IActionResult> LinkGoogle([FromBody] GoogleLinkRequestDto request, CancellationToken cancel)
+    {
+        if (User.GetUserId() is not { } userId)
+        {
+            return this.ToProblem(IdentityErrors.SessionInvalid);
+        }
+
+        Result<ActionMessageDto> result = await auth.LinkGoogleAsync(userId, request.IdToken, cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
+    [Authorize]
+    [HttpDelete("google")]
+    public async Task<IActionResult> UnlinkGoogle(CancellationToken cancel)
+    {
+        if (User.GetUserId() is not { } userId)
+        {
+            return this.ToProblem(IdentityErrors.SessionInvalid);
+        }
+
+        Result<ActionMessageDto> result = await auth.UnlinkGoogleAsync(userId, cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(CancellationToken cancel)
     {
@@ -133,6 +172,45 @@ public sealed class AuthController(
             request.PhoneNumber,
             request.JobTitle,
             cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
+    // Client đã thu ảnh về khoảng 256x256; giới hạn 128 KB ở đây là để chặn sớm, máy chủ kiểm tra lại loại file và kích thước.
+    [Authorize]
+    [HttpPut("me/avatar")]
+    [RequestSizeLimit(256 * 1024)]
+    public async Task<IActionResult> SetAvatar([FromForm] IFormFile? file, CancellationToken cancel)
+    {
+        if (User.GetUserId() is not { } userId)
+        {
+            return this.ToProblem(IdentityErrors.SessionInvalid);
+        }
+
+        if (file is null || file.Length is <= 0 or > IUserService.MaxAvatarBytes)
+        {
+            return this.ToProblem(IdentityErrors.AvatarInvalid);
+        }
+
+        byte[] bytes = new byte[file.Length];
+        await using (Stream stream = file.OpenReadStream())
+        {
+            await stream.ReadExactlyAsync(bytes, cancel);
+        }
+
+        Result<UserProfileDto> result = await users.SetAvatarAsync(userId, User.GetTenantId(), bytes, cancel);
+        return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
+    }
+
+    [Authorize]
+    [HttpDelete("me/avatar")]
+    public async Task<IActionResult> RemoveAvatar(CancellationToken cancel)
+    {
+        if (User.GetUserId() is not { } userId)
+        {
+            return this.ToProblem(IdentityErrors.SessionInvalid);
+        }
+
+        Result<UserProfileDto> result = await users.RemoveAvatarAsync(userId, User.GetTenantId(), cancel);
         return result.IsSuccess ? Ok(result.Value) : this.ToProblem(result.Error);
     }
 

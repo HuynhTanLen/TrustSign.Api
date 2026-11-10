@@ -12,6 +12,13 @@ public interface IAuthService
 
     Task<Result<AuthSessionResultDto>> LoginAsync(LoginRequestDto request, CancellationToken cancel);
 
+    /// <summary>Đăng nhập bằng Google (Firebase ID token): tự tạo tài khoản mới, hoặc liên kết với tài khoản cũ nếu có mật khẩu đúng.</summary>
+    Task<Result<AuthSessionResultDto>> GoogleLoginAsync(GoogleLoginRequestDto request, CancellationToken cancel);
+
+    Task<Result<ActionMessageDto>> LinkGoogleAsync(Guid userId, string idToken, CancellationToken cancel);
+
+    Task<Result<ActionMessageDto>> UnlinkGoogleAsync(Guid userId, CancellationToken cancel);
+
     Task<Result<AuthSessionResultDto>> RefreshAsync(string? rawRefreshToken, CancellationToken cancel);
 
     Task LogoutAsync(string? rawRefreshToken, CancellationToken cancel);

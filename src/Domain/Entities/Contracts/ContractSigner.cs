@@ -3,7 +3,7 @@ using TrustSign.Common.Enums;
 namespace TrustSign.Domain.Entities.Contracts;
 
 /// <summary>
-/// Người nhận trong quy trình hợp đồng (Signer, Approver, Cc) theo thứ tự tuần tự (F03, F04)
+/// Người nhận trong quy trình hợp đồng (Signer, Approver, Cc, Coordinator) theo thứ tự tuần tự (F03, F04)
 /// kèm vị trí ô chữ ký trên trang PDF (đối với Signer).
 /// </summary>
 public sealed class ContractSigner
@@ -86,6 +86,9 @@ public sealed class ContractSigner
     };
 
     public void ActivateTurn() => Status = SignerStatus.Current;
+
+    /// <summary>Lùi lượt khi người điều phối chèn người của bên mình vào phía trước.</summary>
+    public void ShiftOrder(int by) => SignOrder += by;
 
     public void MarkSigned(DateTimeOffset now, string? signatureStorageKey = null)
     {

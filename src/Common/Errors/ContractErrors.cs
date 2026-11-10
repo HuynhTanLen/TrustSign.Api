@@ -34,7 +34,7 @@ public static class ContractErrors
         Error.Validation("Contract.InvalidSignerEmail", $"Người nhận thứ {order}: địa chỉ email không hợp lệ.");
 
     public static readonly Error AtLeastOneSignerRequired =
-        Error.Validation("Contract.NoSigner", "Hợp đồng phải có ít nhất một người ký (Signer).");
+        Error.Validation("Contract.NoSigner", "Hợp đồng phải có ít nhất một người ký hoặc người điều phối.");
 
     public static readonly Error InvalidSignatureBox =
         Error.Validation("Contract.InvalidSignatureBox", "Tọa độ hoặc kích thước ô chữ ký trên trang PDF không hợp lệ.");
@@ -62,4 +62,13 @@ public static class ContractErrors
 
     public static readonly Error CcCannotSignOrApprove =
         Error.Validation("Contract.CcCannotSignOrApprove", "Người nhận bản sao (Cc) không tham gia ký hoặc duyệt.");
+
+    public static readonly Error CoordinatorMustCoordinate =
+        Error.Validation("Contract.CoordinatorMustCoordinate", "Người điều phối không ký hay duyệt mà khai báo người duyệt/ký của bên mình.");
+
+    public static readonly Error NotCoordinator =
+        Error.Validation("Contract.NotCoordinator", "Người nhận này không có quyền điều phối.");
+
+    public static readonly Error InvalidCoordination =
+        Error.Validation("Contract.InvalidCoordination", "Cần khai báo đúng một người ký, có thể thêm người duyệt hoặc Cc; tổng số người nhận của hợp đồng tối đa 5.");
 }

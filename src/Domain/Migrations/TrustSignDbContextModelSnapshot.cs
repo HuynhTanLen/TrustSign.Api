@@ -390,6 +390,52 @@ namespace TrustSign.Domain.Migrations
                     b.ToTable("email_verification_tokens", "identity");
                 });
 
+            modelBuilder.Entity("TrustSign.Domain.Entities.Identity.ExternalLogin", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderUserId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("provider_user_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_external_logins");
+
+                    b.HasIndex("Provider", "ProviderUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_external_logins_provider_provider_user_id");
+
+                    b.HasIndex("UserId", "Provider")
+                        .IsUnique()
+                        .HasDatabaseName("ix_external_logins_user_id_provider");
+
+                    b.ToTable("external_logins", "identity");
+                });
+
             modelBuilder.Entity("TrustSign.Domain.Entities.Identity.IdentityVerification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -656,6 +702,15 @@ namespace TrustSign.Domain.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_user_id");
 
+                    b.Property<string>("LockReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("lock_reason");
+
+                    b.Property<DateTimeOffset?>("LockedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("locked_at");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -769,6 +824,11 @@ namespace TrustSign.Domain.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AvatarKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("avatar_key");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -794,12 +854,20 @@ namespace TrustSign.Domain.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("job_title");
 
+                    b.Property<string>("LockReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("lock_reason");
+
+                    b.Property<DateTimeOffset?>("LockedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("locked_at");
+
                     b.Property<DateTimeOffset?>("LockedUntil")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("locked_until");
 
                     b.Property<string>("PasswordHash")
-                        .IsRequired()
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)")
                         .HasColumnName("password_hash");
@@ -1118,6 +1186,16 @@ namespace TrustSign.Domain.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_email_verification_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("TrustSign.Domain.Entities.Identity.ExternalLogin", b =>
+                {
+                    b.HasOne("TrustSign.Domain.Entities.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_external_logins_users_user_id");
                 });
 
             modelBuilder.Entity("TrustSign.Domain.Entities.Identity.IdentityVerification", b =>

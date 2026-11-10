@@ -19,6 +19,7 @@ internal sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(tenant => tenant.RepresentativeName).HasMaxLength(100);
         builder.Property(tenant => tenant.RepresentativeTitle).HasMaxLength(100);
         builder.Property(tenant => tenant.Phone).HasMaxLength(32);
+        builder.Property(tenant => tenant.LockReason).HasMaxLength(500);
         builder.Property(tenant => tenant.Status).HasConversion<string>().HasMaxLength(16);
 
         builder.HasOne<User>()
