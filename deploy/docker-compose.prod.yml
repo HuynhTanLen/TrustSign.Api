@@ -9,7 +9,7 @@ services:
       AutoMigrate: "true"
       Jwt__PrivateKeyPath: /app/keys/signing-key.pem
       Jwt__CreateKeyIfMissing: "true" # sinh khóa lần đầu, giữ lại nhờ volume keys
-      ContractStorage__StorageRootPath: /app/storage/contracts
+      Media__StorageRootPath: /app/storage/contracts
       ConnectionStrings__TrustSignDb: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
     volumes:
       - keys:/app/keys

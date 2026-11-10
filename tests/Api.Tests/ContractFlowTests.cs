@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Contracts;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
@@ -31,12 +32,13 @@ public sealed class ContractFlowTests : IDisposable
     private readonly InMemoryContractStore _store = new();
     private readonly ConfigurableQuotaService _quota = new();
     private readonly RecordingEmailSender _emails = new();
+    private readonly ToggleIdentityChecker _identity = new();
     private readonly InMemoryAuditLogger _audit;
 
     // Đủ để qua kiểm tra chữ ký PNG: 8 byte đầu là magic bytes của PNG.
     private static readonly string TestSignaturePng =
         "data:image/png;base64," + Convert.ToBase64String([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4]);
-    private readonly IContractFileStorage _fileStorage;
+    private readonly IMediaStorage _fileStorage;
     private readonly IContractPdfGenerator _pdfGenerator = new ContractPdfGenerator();
     private readonly ITemplateService _templateService;
     private readonly IContractService _contractService;
@@ -49,12 +51,12 @@ public sealed class ContractFlowTests : IDisposable
 
     public ContractFlowTests()
     {
-        IOptions<ContractStorageOptions> storageOptions = Options.Create(new ContractStorageOptions
+        IOptions<MediaOptions> storageOptions = Options.Create(new MediaOptions
         {
             StorageRootPath = _tempStorageDir,
             PublicApiBaseUrl = "http://localhost:5050",
-            DocumentTokenSecret = "test_hmac_secret_key_for_document_tokens_2026",
-            DocumentUrlLifetimeMinutes = 30
+            TokenSecret = "test_hmac_secret_key_for_document_tokens_2026",
+            UrlLifetimeMinutes = 30
         });
 
         IOptions<SmtpOptions> smtpOptions = Options.Create(new SmtpOptions
@@ -62,14 +64,16 @@ public sealed class ContractFlowTests : IDisposable
             FrontendBaseUrl = "http://localhost:3000"
         });
 
-        _fileStorage = new LocalContractFileStorage(storageOptions);
+        _fileStorage = new LocalMediaStorage(storageOptions);
         _audit = new InMemoryAuditLogger(_clock);
         _templateService = new TemplateService(_store, _store, _clock);
         _contractService = new ContractService(
             _store,
             _store,
             _store,
+            _identity,
             _fileStorage,
+            new HmacMediaSigner(storageOptions),
             _pdfGenerator,
             _quota,
             _store,
@@ -131,6 +135,25 @@ public sealed class ContractFlowTests : IDisposable
 
         Result<IReadOnlyList<TemplateSummaryDto>> listAfterDelete = await _templateService.ListAsync(_tenantA, Cancel);
         Assert.Empty(listAfterDelete.Value);
+    }
+
+    [Fact]
+    public async Task Create_contract_is_blocked_until_creator_passes_ekyc()
+    {
+        Result<TemplateSummaryDto> tpl = await _templateService.CreateAsync(
+            _tenantA, _ownerUserId, new SaveTemplateRequestDto("Mẫu", "Bên A: {{ten}}"), Cancel);
+        var request = new CreateFromTemplateRequestDto(tpl.Value.Id, "Hợp đồng", new Dictionary<string, string> { ["ten"] = "A" });
+
+        _identity.Verified = false;
+        Result<CreatedContractResponseDto> blocked = await _contractService.CreateFromTemplateAsync(_tenantA, _ownerUserId, request, Cancel);
+        Assert.Equal(IdentityErrors.IdentityNotVerified, blocked.Error);
+
+        Result<CreatedContractResponseDto> blockedUpload = await _contractService.UploadDraftAsync(
+            _tenantA, _ownerUserId, "Hợp đồng", "%PDF-1.4"u8.ToArray(), null, Cancel);
+        Assert.Equal(IdentityErrors.IdentityNotVerified, blockedUpload.Error);
+
+        _identity.Verified = true;
+        Assert.True((await _contractService.CreateFromTemplateAsync(_tenantA, _ownerUserId, request, Cancel)).IsSuccess);
     }
 
     [Fact]
@@ -689,6 +712,13 @@ public sealed class ContractFlowTests : IDisposable
             LastSent = message;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class ToggleIdentityChecker : TrustSign.Application.Modules.Identity.IIdentityVerifiedChecker
+    {
+        public bool Verified { get; set; } = true;
+
+        public Task<bool> IsVerifiedAsync(Guid userId, CancellationToken cancel) => Task.FromResult(Verified);
     }
 
     private sealed class InMemoryContractStore :

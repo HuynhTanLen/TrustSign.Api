@@ -190,19 +190,4 @@ public sealed class ContractsController(IContractService contractService) : Cont
         return result.IsSuccess ? NoContent() : this.ToProblem(result.Error);
     }
 
-    [AllowAnonymous]
-    [HttpGet("{id:guid}/document")]
-    public async Task<IActionResult> GetDocument(
-        Guid id,
-        [FromQuery] string? token,
-        CancellationToken cancel)
-    {
-        Result<byte[]> result = await contractService.GetDocumentBytesByTokenAsync(id, token ?? string.Empty, cancel);
-        if (result.IsFailure)
-        {
-            return this.ToProblem(result.Error);
-        }
-
-        return File(result.Value, "application/pdf");
-    }
 }

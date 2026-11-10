@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using TrustSign.Application.Modules.Contracts;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
@@ -17,7 +18,7 @@ namespace TrustSign.Application.Modules.Signing;
 internal sealed class SigningSessionService(
     IContractRepository contracts,
     IContractService contractService,
-    IContractFileStorage fileStorage,
+    IMediaSigner mediaSigner,
     ITenantRepository tenants,
     IEmailSender emailSender,
     IMemoryCache cache,
@@ -60,7 +61,7 @@ internal sealed class SigningSessionService(
             DetermineState(contract, signer, token, now),
             contract.DueAt,
             fields,
-            fileStorage.CreateShortLivedDocumentUrl(contract.TenantId, contract.Id, now),
+            mediaSigner.CreateDocumentUrl(contract.TenantId, contract.Id, now),
             signer.Role.ToString());
     }
 
@@ -99,7 +100,7 @@ internal sealed class SigningSessionService(
 
     public Result<OtpVerificationDto> VerifyOtp(string token, string? code)
     {
-        if (!fileStorage.ValidateSigningToken(token, out _, out _, timeProvider.GetUtcNow()))
+        if (!mediaSigner.TryValidateSigningToken(token, timeProvider.GetUtcNow(), out _, out _))
         {
             return SigningErrors.TokenInvalid;
         }
@@ -133,7 +134,7 @@ internal sealed class SigningSessionService(
 
     public async Task<Result> SignAsync(string token, string? signaturePng, CancellationToken cancel)
     {
-        if (!fileStorage.ValidateSigningToken(token, out Guid contractId, out Guid signerId, timeProvider.GetUtcNow()))
+        if (!mediaSigner.TryValidateSigningToken(token, timeProvider.GetUtcNow(), out Guid contractId, out Guid signerId))
         {
             return SigningErrors.TokenInvalid;
         }
@@ -149,7 +150,7 @@ internal sealed class SigningSessionService(
 
     public async Task<Result> DeclineAsync(string token, string? reason, CancellationToken cancel)
     {
-        if (!fileStorage.ValidateSigningToken(token, out Guid contractId, out Guid signerId, timeProvider.GetUtcNow()))
+        if (!mediaSigner.TryValidateSigningToken(token, timeProvider.GetUtcNow(), out Guid contractId, out Guid signerId))
         {
             return SigningErrors.TokenInvalid;
         }
@@ -163,7 +164,7 @@ internal sealed class SigningSessionService(
         DateTimeOffset now,
         CancellationToken cancel)
     {
-        if (!fileStorage.ValidateSigningToken(token, out Guid contractId, out Guid signerId, now))
+        if (!mediaSigner.TryValidateSigningToken(token, now, out Guid contractId, out Guid signerId))
         {
             return SigningErrors.TokenInvalid;
         }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Audit;
 using TrustSign.Application.Modules.Identity;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
@@ -23,7 +24,9 @@ internal sealed class ContractService(
     IContractRepository contracts,
     IContractTemplateRepository templates,
     IUserRepository users,
-    IContractFileStorage fileStorage,
+    IIdentityVerifiedChecker identityChecker,
+    IMediaStorage fileStorage,
+    IMediaSigner mediaSigner,
     IContractPdfGenerator pdfGenerator,
     IQuotaService quotaService,
     IUnitOfWork unitOfWork,
@@ -33,8 +36,6 @@ internal sealed class ContractService(
     TimeProvider timeProvider,
     ILogger<ContractService> logger) : IContractService
 {
-    private static readonly byte[] PdfMagicBytes = "%PDF-"u8.ToArray();
-    private static readonly byte[] PngMagicBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
     private const string PngDataUrlPrefix = "data:image/png;base64,";
     private const int MaxSignatureBytes = 512 * 1024;
 
@@ -97,7 +98,7 @@ internal sealed class ContractService(
 
         Contract contract = accessResult.Value;
         DateTimeOffset now = timeProvider.GetUtcNow();
-        string documentUrl = fileStorage.CreateShortLivedDocumentUrl(tenantId, contract.Id, now);
+        string documentUrl = mediaSigner.CreateDocumentUrl(tenantId, contract.Id, now);
 
         IReadOnlyList<ContractSignerDto> signerDtos = contract.Signers
             .OrderBy(s => s.SignOrder)
@@ -147,6 +148,11 @@ internal sealed class ContractService(
         CreateFromTemplateRequestDto request,
         CancellationToken cancel = default)
     {
+        if (!await identityChecker.IsVerifiedAsync(userId, cancel))
+        {
+            return IdentityErrors.IdentityNotVerified;
+        }
+
         string trimmedTitle = request.Title?.Trim() ?? string.Empty;
         if (trimmedTitle.Length is 0 or > 200)
         {
@@ -194,6 +200,11 @@ internal sealed class ContractService(
         IReadOnlyList<SetSignerItemDto>? signers,
         CancellationToken cancel = default)
     {
+        if (!await identityChecker.IsVerifiedAsync(userId, cancel))
+        {
+            return IdentityErrors.IdentityNotVerified;
+        }
+
         string trimmedTitle = title?.Trim() ?? string.Empty;
         if (trimmedTitle.Length is 0 or > 200)
         {
@@ -342,7 +353,7 @@ internal sealed class ContractService(
         CancellationToken cancel = default)
     {
         DateTimeOffset now = timeProvider.GetUtcNow();
-        if (!fileStorage.ValidateDocumentToken(token, out Guid tokenTenantId, out Guid tokenContractId, now) ||
+        if (!mediaSigner.TryValidateDocumentToken(token, now, out Guid tokenTenantId, out Guid tokenContractId) ||
             tokenContractId != contractId)
         {
             return ContractErrors.DocumentAccessDenied;
@@ -599,7 +610,7 @@ internal sealed class ContractService(
             string safeTitle = WebUtility.HtmlEncode(contract.Title);
             string safeSigner = WebUtility.HtmlEncode(firstSigner.FullName);
             string roleLabel = firstSigner.Role == RecipientRole.Approver ? "duyệt" : "ký";
-            string signingToken = fileStorage.CreateSigningToken(contract.Id, firstSigner.Id, timeProvider.GetUtcNow());
+            string signingToken = mediaSigner.CreateSigningToken(contract.Id, firstSigner.Id, timeProvider.GetUtcNow());
             string signUrl = $"{baseUrl}/sign/{Uri.EscapeDataString(signingToken)}";
 
             string html = $"""
@@ -689,9 +700,7 @@ internal sealed class ContractService(
     }
 
     private static bool IsValidPdf(ReadOnlySpan<byte> bytes) =>
-        bytes.Length > PdfMagicBytes.Length &&
-        bytes.Length <= Contract.MaxPdfSizeBytes &&
-        bytes[..PdfMagicBytes.Length].SequenceEqual(PdfMagicBytes);
+        bytes.Length > 5 && bytes.Length <= Contract.MaxPdfSizeBytes && MediaContent.Detect(bytes) == MediaType.Pdf;
 
     private static ContractListItemDto ToListItemDto(Contract c)
     {
@@ -752,9 +761,9 @@ internal sealed class ContractService(
 
         byte[] buffer = new byte[base64.Length];
         if (!Convert.TryFromBase64String(base64, buffer, out int written) ||
-            written <= PngMagicBytes.Length ||
+            written <= 8 ||
             written > MaxSignatureBytes ||
-            !buffer.AsSpan(0, PngMagicBytes.Length).SequenceEqual(PngMagicBytes))
+            MediaContent.Detect(buffer.AsSpan(0, written)) != MediaType.Png)
         {
             return null;
         }

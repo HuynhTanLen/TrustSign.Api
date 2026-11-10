@@ -118,6 +118,37 @@ public static class IdentityErrors
     public static readonly Error EkycHandoffInvalid =
         Error.NotFound("Ekyc.HandoffInvalid", "Liên kết xác minh đã hết hạn hoặc không hợp lệ. Hãy quét lại mã QR trên máy tính.");
 
+    public static readonly Error AvatarInvalid =
+        Error.Validation("Profile.AvatarInvalid", "Ảnh đại diện phải là JPEG, PNG hoặc WebP và tối đa 128 KB.");
+
+    public static readonly Error AvatarNotFound =
+        Error.NotFound("Profile.AvatarNotFound", "Không tìm thấy ảnh đại diện.");
+
+    public static readonly Error IdentityNotVerified =
+        Error.Forbidden("Identity.NotVerified", "Bạn cần xác minh danh tính (eKYC) trước khi tạo hợp đồng.");
+
+    public static readonly Error ExternalTokenInvalid =
+        Error.Unauthorized("Auth.ExternalTokenInvalid", "Không xác thực được tài khoản Google. Vui lòng thử lại.");
+
+    public static readonly Error GoogleEmailNotVerified =
+        Error.Forbidden("Auth.GoogleEmailNotVerified", "Email của tài khoản Google chưa được xác minh.");
+
+    /// <summary>Email Google trùng một tài khoản có sẵn: frontend hỏi mật khẩu rồi gửi lại cùng ID token.</summary>
+    public static readonly Error GoogleLinkRequiresPassword =
+        Error.Conflict("Auth.GoogleLinkRequiresPassword", "Email này đã có tài khoản. Nhập mật khẩu hiện tại để liên kết với Google.");
+
+    public static readonly Error GoogleAlreadyLinked =
+        Error.Conflict("Auth.GoogleAlreadyLinked", "Tài khoản Google này đã được liên kết với một tài khoản khác.");
+
+    public static readonly Error GoogleNotLinked =
+        Error.NotFound("Auth.GoogleNotLinked", "Tài khoản chưa liên kết Google.");
+
+    public static readonly Error CannotUnlinkLastMethod =
+        Error.Validation("Auth.CannotUnlinkLastMethod", "Hãy đặt mật khẩu (Quên mật khẩu) trước khi hủy liên kết Google, nếu không bạn sẽ không đăng nhập được.");
+
+    public static readonly Error PasswordNotSet =
+        Error.Unauthorized("Auth.PasswordNotSet", "Tài khoản này đăng nhập bằng Google. Hãy dùng Google, hoặc Quên mật khẩu để đặt mật khẩu.");
+
     public static readonly Error EkycNotVerified =
         Error.Validation("Ekyc.NotVerified", "Hồ sơ này không còn ở trạng thái đã xác minh.");
 }
