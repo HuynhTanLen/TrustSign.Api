@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace TrustSign.Common;
+namespace TrustSign.Common.Validation;
 
 /// <summary>
 /// Kiểm tra mã số thuế Việt Nam: 10 chữ số hoặc 13 chữ số có dấu gạch nối (^\d{10}(-\d{3})?$).

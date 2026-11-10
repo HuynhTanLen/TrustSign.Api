@@ -1,19 +1,22 @@
 using System.Security.Cryptography;
 using System.Text;
-using iText.Kernel.Pdf;
-using iText.Kernel.Pdf.Canvas.Parser;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Contracts;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
+using TrustSign.Domain.Entities.Audit;
 using TrustSign.Domain.Entities.Contracts;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories;
 using TrustSign.Domain.IRepositories.Contracts;
 using TrustSign.Domain.IRepositories.Identity;
+using iText.Kernel.Pdf;
+using iText.Kernel.Pdf.Canvas.Parser;
 
 namespace TrustSign.Api.Tests;
 
@@ -29,7 +32,13 @@ public sealed class ContractFlowTests : IDisposable
     private readonly InMemoryContractStore _store = new();
     private readonly ConfigurableQuotaService _quota = new();
     private readonly RecordingEmailSender _emails = new();
-    private readonly IContractFileStorage _fileStorage;
+    private readonly ToggleIdentityChecker _identity = new();
+    private readonly InMemoryAuditLogger _audit;
+
+    // Đủ để qua kiểm tra chữ ký PNG: 8 byte đầu là magic bytes của PNG.
+    private static readonly string TestSignaturePng =
+        "data:image/png;base64," + Convert.ToBase64String([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4]);
+    private readonly IMediaStorage _fileStorage;
     private readonly IContractPdfGenerator _pdfGenerator = new ContractPdfGenerator();
     private readonly ITemplateService _templateService;
     private readonly IContractService _contractService;
@@ -42,12 +51,12 @@ public sealed class ContractFlowTests : IDisposable
 
     public ContractFlowTests()
     {
-        IOptions<ContractStorageOptions> storageOptions = Options.Create(new ContractStorageOptions
+        IOptions<MediaOptions> storageOptions = Options.Create(new MediaOptions
         {
             StorageRootPath = _tempStorageDir,
             PublicApiBaseUrl = "http://localhost:5050",
-            DocumentTokenSecret = "test_hmac_secret_key_for_document_tokens_2026",
-            DocumentUrlLifetimeMinutes = 30
+            TokenSecret = "test_hmac_secret_key_for_document_tokens_2026",
+            UrlLifetimeMinutes = 30
         });
 
         IOptions<SmtpOptions> smtpOptions = Options.Create(new SmtpOptions
@@ -55,17 +64,21 @@ public sealed class ContractFlowTests : IDisposable
             FrontendBaseUrl = "http://localhost:3000"
         });
 
-        _fileStorage = new LocalContractFileStorage(storageOptions);
+        _fileStorage = new LocalMediaStorage(storageOptions);
+        _audit = new InMemoryAuditLogger(_clock);
         _templateService = new TemplateService(_store, _store, _clock);
         _contractService = new ContractService(
             _store,
             _store,
             _store,
+            _identity,
             _fileStorage,
+            new HmacMediaSigner(storageOptions),
             _pdfGenerator,
             _quota,
             _store,
             _emails,
+            _audit,
             smtpOptions,
             _clock,
             NullLogger<ContractService>.Instance);
@@ -122,6 +135,25 @@ public sealed class ContractFlowTests : IDisposable
 
         Result<IReadOnlyList<TemplateSummaryDto>> listAfterDelete = await _templateService.ListAsync(_tenantA, Cancel);
         Assert.Empty(listAfterDelete.Value);
+    }
+
+    [Fact]
+    public async Task Create_contract_is_blocked_until_creator_passes_ekyc()
+    {
+        Result<TemplateSummaryDto> tpl = await _templateService.CreateAsync(
+            _tenantA, _ownerUserId, new SaveTemplateRequestDto("Mẫu", "Bên A: {{ten}}"), Cancel);
+        var request = new CreateFromTemplateRequestDto(tpl.Value.Id, "Hợp đồng", new Dictionary<string, string> { ["ten"] = "A" });
+
+        _identity.Verified = false;
+        Result<CreatedContractResponseDto> blocked = await _contractService.CreateFromTemplateAsync(_tenantA, _ownerUserId, request, Cancel);
+        Assert.Equal(IdentityErrors.IdentityNotVerified, blocked.Error);
+
+        Result<CreatedContractResponseDto> blockedUpload = await _contractService.UploadDraftAsync(
+            _tenantA, _ownerUserId, "Hợp đồng", "%PDF-1.4"u8.ToArray(), null, Cancel);
+        Assert.Equal(IdentityErrors.IdentityNotVerified, blockedUpload.Error);
+
+        _identity.Verified = true;
+        Assert.True((await _contractService.CreateFromTemplateAsync(_tenantA, _ownerUserId, request, Cancel)).IsSuccess);
     }
 
     [Fact]
@@ -194,7 +226,7 @@ public sealed class ContractFlowTests : IDisposable
             _ownerUserId,
             "Hợp đồng lỗi",
             fakeBytes,
-            Cancel);
+            null, Cancel);
         Assert.True(invalid.IsFailure);
         Assert.Equal(ContractErrors.InvalidPdfFile.Code, invalid.Error.Code);
 
@@ -210,7 +242,7 @@ public sealed class ContractFlowTests : IDisposable
             _ownerUserId,
             "Hợp đồng tải lên hợp lệ",
             validPdf,
-            Cancel);
+            null, Cancel);
 
         Assert.True(uploaded.IsSuccess);
         Contract? contract = await _store.FindByIdAsync(_tenantA, uploaded.Value.ContractId, Cancel);
@@ -219,10 +251,60 @@ public sealed class ContractFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_draft_with_invalid_signer_saves_nothing_and_names_the_recipient()
+    {
+        byte[] pdf = _pdfGenerator.RenderTemplateToPdf("HĐ", "HD-03", "Nội dung", _clock.GetUtcNow());
+
+        Result<CreatedContractResponseDto> result = await _contractService.UploadDraftAsync(
+            _tenantA,
+            _ownerUserId,
+            "Hợp đồng có email sai",
+            pdf,
+            [
+                new SetSignerItemDto("Nguyễn Văn A", "a@partner.vn", Order: 1),
+                new SetSignerItemDto("Trần Thị B", "b @partner.vn", Order: 2)
+            ],
+            Cancel);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Contract.InvalidSignerEmail", result.Error.Code);
+        Assert.Contains("Người nhận thứ 2", result.Error.Message);
+
+        var list = await _contractService.ListAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, null, null, Cancel);
+        Assert.Empty(list.Value);
+        Assert.Empty(Directory.Exists(_tempStorageDir)
+            ? Directory.GetFiles(_tempStorageDir, "*", SearchOption.AllDirectories)
+            : []);
+    }
+
+    [Fact]
+    public async Task Create_draft_with_valid_signers_stores_them_in_one_call()
+    {
+        byte[] pdf = _pdfGenerator.RenderTemplateToPdf("HĐ", "HD-04", "Nội dung", _clock.GetUtcNow());
+
+        Result<CreatedContractResponseDto> result = await _contractService.UploadDraftAsync(
+            _tenantA,
+            _ownerUserId,
+            "Hợp đồng kèm người nhận",
+            pdf,
+            [
+                new SetSignerItemDto("Nguyễn Văn A", "a@partner.vn", Order: 1),
+                new SetSignerItemDto("Trần Thị B", "b@partner.vn", Order: 2)
+            ],
+            Cancel);
+
+        Assert.True(result.IsSuccess);
+        Contract? contract = await _store.FindByIdAsync(_tenantA, result.Value.ContractId, Cancel);
+        Assert.NotNull(contract);
+        Assert.Equal(ContractStatus.Draft, contract.Status);
+        Assert.Equal(["a@partner.vn", "b@partner.vn"], contract.Signers.OrderBy(s => s.SignOrder).Select(s => s.Email));
+    }
+
+    [Fact]
     public async Task Draft_can_be_cancelled_once()
     {
         byte[] pdf = _pdfGenerator.RenderTemplateToPdf("HĐ nháp", "HD-02", "Nội dung", _clock.GetUtcNow());
-        Result<CreatedContractResponseDto> draft = await _contractService.UploadDraftAsync(_tenantA, _ownerUserId, "Hợp đồng nháp", pdf, Cancel);
+        Result<CreatedContractResponseDto> draft = await _contractService.UploadDraftAsync(_tenantA, _ownerUserId, "Hợp đồng nháp", pdf, null, Cancel);
 
         Assert.True((await _contractService.CancelAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, draft.Value.ContractId, Cancel)).IsSuccess);
         Result again = await _contractService.CancelAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, draft.Value.ContractId, Cancel);
@@ -238,7 +320,7 @@ public sealed class ContractFlowTests : IDisposable
             _ownerUserId,
             "Hợp đồng dịch vụ A-B",
             validPdf,
-            Cancel);
+            null, Cancel);
 
         // Cấu hình vượt quá 5 người ký -> báo lỗi
         List<SetSignerItemDto> sixSigners = Enumerable.Range(1, 6)
@@ -331,7 +413,7 @@ public sealed class ContractFlowTests : IDisposable
             _ownerUserId,
             "Hợp đồng vượt hạn mức",
             validPdf,
-            Cancel);
+            null, Cancel);
 
         await _contractService.SetSignersAsync(
             _tenantA,
@@ -376,7 +458,7 @@ public sealed class ContractFlowTests : IDisposable
             _ownerUserId,
             "Hợp đồng nội bộ DN A",
             validPdf,
-            Cancel);
+            null, Cancel);
 
         // Doanh nghiệp B truy cập mã hợp đồng của Doanh nghiệp A -> 404 NotFound (TC10, TC14)
         Result<ContractDetailDto> readFromB = await _contractService.GetByIdAsync(
@@ -401,14 +483,14 @@ public sealed class ContractFlowTests : IDisposable
             _employee1Id,
             "Hợp đồng của Nhân viên 1",
             validPdf,
-            Cancel);
+            null, Cancel);
 
         await _contractService.UploadDraftAsync(
             _tenantA,
             _employee2Id,
             "Hợp đồng của Nhân viên 2",
             validPdf,
-            Cancel);
+            null, Cancel);
 
         // Nhân viên 1 chỉ thấy đúng 1 hợp đồng do mình tạo
         Result<IReadOnlyList<ContractListItemDto>> emp1List = await _contractService.ListAsync(
@@ -451,7 +533,7 @@ public sealed class ContractFlowTests : IDisposable
             _ownerUserId,
             "Hợp đồng không có Signer",
             validPdf,
-            Cancel);
+            null, Cancel);
 
         Result setSignersResult = await _contractService.SetSignersAsync(
             _tenantA,
@@ -477,7 +559,7 @@ public sealed class ContractFlowTests : IDisposable
             _ownerUserId,
             "Hợp đồng luồng phức hợp",
             validPdf,
-            Cancel);
+            null, Cancel);
 
         Guid contractId = draft.Value.ContractId;
 
@@ -521,8 +603,18 @@ public sealed class ContractFlowTests : IDisposable
         ContractSigner s4 = contract.Signers.First(s => s.SignOrder == 4);
 
         // Lượt 1: Signer 1 ký -> chuyển lượt sang Approver 2
-        Result sign1 = await _contractService.ProcessSignOrApproveAsync(contractId, s1.Id, Cancel);
+        Result noSignature = await _contractService.ProcessSignOrApproveAsync(contractId, s1.Id, null, Cancel);
+        Assert.Equal(SigningErrors.SignatureImageInvalid, noSignature.Error);
+
+        Result sign1 = await _contractService.ProcessSignOrApproveAsync(contractId, s1.Id, TestSignaturePng, Cancel);
         Assert.True(sign1.IsSuccess);
+        Assert.NotNull(await _fileStorage.ReadAsync(s1.SignatureStorageKey!, Cancel));
+
+        // Bấm ký lần 2: thành công nhưng không thêm sự kiện hay chuyển lượt (TC07)
+        int eventsBefore = _audit.Events.Count;
+        Result sign1Again = await _contractService.ProcessSignOrApproveAsync(contractId, s1.Id, TestSignaturePng, Cancel);
+        Assert.True(sign1Again.IsSuccess);
+        Assert.Equal(eventsBefore, _audit.Events.Count);
 
         Result<ContractDetailDto> detail2 = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
         Assert.Equal(ContractStatus.Signing.ToString(), detail2.Value.Status);
@@ -531,7 +623,7 @@ public sealed class ContractFlowTests : IDisposable
         Assert.Equal(SignerStatus.Waiting.ToString(), detail2.Value.Signers[2].Status);
 
         // Lượt 2: Approver 2 duyệt -> chuyển lượt sang Signer 3
-        Result approve2 = await _contractService.ProcessSignOrApproveAsync(contractId, s2.Id, Cancel);
+        Result approve2 = await _contractService.ProcessSignOrApproveAsync(contractId, s2.Id, null, Cancel);
         Assert.True(approve2.IsSuccess);
 
         Result<ContractDetailDto> detail3 = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
@@ -539,7 +631,7 @@ public sealed class ContractFlowTests : IDisposable
         Assert.Equal(SignerStatus.Current.ToString(), detail3.Value.Signers[2].Status);
 
         // Lượt 3: Signer 3 ký -> người ký/duyệt cuối cùng -> Hợp đồng hoàn tất (Completed), gửi email cho người nhận Cc (s4)
-        Result sign3 = await _contractService.ProcessSignOrApproveAsync(contractId, s3.Id, Cancel);
+        Result sign3 = await _contractService.ProcessSignOrApproveAsync(contractId, s3.Id, TestSignaturePng, Cancel);
         Assert.True(sign3.IsSuccess);
 
         Result<ContractDetailDto> detailDone = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
@@ -550,6 +642,39 @@ public sealed class ContractFlowTests : IDisposable
         Assert.NotNull(_emails.LastSent);
         Assert.Equal("cc4@company.vn", _emails.LastSent!.To);
         Assert.Contains("Bản sao hợp đồng hoàn tất", _emails.LastSent!.Subject);
+
+        // Dòng thời gian đọc từ chuỗi audit của chính hợp đồng này (AUD-01)
+        Assert.Equal(
+            ["Khởi tạo hợp đồng nháp", "Gửi hợp đồng đi ký", "Ký hợp đồng", "Duyệt hợp đồng", "Ký hợp đồng", "Hoàn tất hợp đồng"],
+            detailDone.Value.Events.Select(e => e.Title));
+        Assert.True(AuditEvent.VerifyChain(await _audit.ListForResourceAsync(_tenantA, "Contract", contractId.ToString(), Cancel)));
+    }
+
+    [Fact]
+    public async Task Decline_stops_flow_logs_event_and_emails_creator()
+    {
+        byte[] pdf = _pdfGenerator.RenderTemplateToPdf("HĐ", "HD-DECLINE", "Nội dung", _clock.GetUtcNow());
+        Guid contractId = (await _contractService.UploadDraftAsync(
+            _tenantA,
+            _ownerUserId,
+            "Hợp đồng bị từ chối",
+            pdf,
+            [new SetSignerItemDto("Nguyễn Văn Ký", "signer@company.vn", 1)],
+            Cancel)).Value.ContractId;
+        await _contractService.SendForSigningAsync(
+            _tenantA, _ownerUserId, TenantRole.TenantOwner, contractId,
+            new SendContractRequestDto(_clock.GetUtcNow().AddDays(3)), Cancel);
+        Guid signerId = (await _store.FindByIdAsync(_tenantA, contractId, Cancel))!.Signers[0].Id;
+
+        Result decline = await _contractService.DeclineAsync(contractId, signerId, "Sai giá trị hợp đồng", Cancel);
+
+        Assert.True(decline.IsSuccess);
+        Assert.Equal("owner@chutin.vn", _emails.LastSent!.To);
+        Assert.Contains("bị từ chối", _emails.LastSent!.Subject);
+        ContractDetailDto detail = (await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel)).Value;
+        Assert.Equal(ContractStatus.Declined.ToString(), detail.Status);
+        Assert.Equal("Từ chối ký", detail.Events[^1].Title);
+        Assert.Contains("Sai giá trị hợp đồng", detail.Events[^1].Detail);
     }
 
 
@@ -587,6 +712,13 @@ public sealed class ContractFlowTests : IDisposable
             LastSent = message;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class ToggleIdentityChecker : TrustSign.Application.Modules.Identity.IIdentityVerifiedChecker
+    {
+        public bool Verified { get; set; } = true;
+
+        public Task<bool> IsVerifiedAsync(Guid userId, CancellationToken cancel) => Task.FromResult(Verified);
     }
 
     private sealed class InMemoryContractStore :

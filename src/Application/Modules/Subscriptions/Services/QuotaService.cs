@@ -1,5 +1,6 @@
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Subscriptions;
 using TrustSign.Domain.IRepositories.Subscriptions;
 

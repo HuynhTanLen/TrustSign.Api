@@ -1,6 +1,6 @@
 using System.Net.Mail;
 
-namespace TrustSign.Common;
+namespace TrustSign.Common.Validation;
 
 /// <summary>
 /// Kiểm tra định dạng email tập trung dùng chung cho toàn bộ Domain và Application.

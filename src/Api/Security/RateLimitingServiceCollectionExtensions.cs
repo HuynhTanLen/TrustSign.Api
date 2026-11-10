@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using TrustSign.Common;
+using TrustSign.Common.Security;
 
 namespace TrustSign.Api.Security;
 

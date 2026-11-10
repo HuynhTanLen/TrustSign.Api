@@ -1,5 +1,6 @@
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Security;
 
 namespace TrustSign.Api.Security;
 

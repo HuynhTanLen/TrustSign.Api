@@ -1,4 +1,4 @@
-namespace TrustSign.Common;
+namespace TrustSign.Common.Security;
 
 /// <summary>Tên claim trong access token (NFR17). Mọi chỗ đọc danh tính người gọi đều dùng các tên này.</summary>
 public static class JwtClaims

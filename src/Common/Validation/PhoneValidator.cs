@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace TrustSign.Common;
+namespace TrustSign.Common.Validation;
 
 /// <summary>
 /// Kiểm tra định dạng số điện thoại Việt Nam: ^(0|\+84)\d{9}$

@@ -66,5 +66,6 @@ internal sealed class ContractSignerConfiguration : IEntityTypeConfiguration<Con
         builder.Property(signer => signer.Title).HasMaxLength(100);
         builder.Property(signer => signer.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(signer => signer.DeclineReason).HasMaxLength(500);
+        builder.Property(signer => signer.SignatureStorageKey).HasMaxLength(300);
     }
 }

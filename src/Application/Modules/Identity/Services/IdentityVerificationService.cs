@@ -4,9 +4,10 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Audit;
-using TrustSign.Application.Modules.Contracts;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories.Identity;
 
@@ -18,15 +19,12 @@ namespace TrustSign.Application.Modules.Identity;
 /// </summary>
 internal sealed class IdentityVerificationService : IIdentityVerificationService
 {
-    private const int NonceSize = 12;
-    private const int TagSize = 16;
-
     private readonly IIdentityVerificationRepository _verifications;
-    // Dùng lại kho file của hợp đồng (cùng thư mục gốc, khác thư mục con "ekyc/") thay vì dựng thêm một kho riêng.
-    private readonly IContractFileStorage _storage;
+    // Dùng chung kho Media (cùng thư mục gốc, khác thư mục con "ekyc/") thay vì dựng thêm một kho riêng.
+    private readonly IMediaStorage _storage;
+    private readonly IMediaCipher _cipher;
     private readonly IAuditLogger _audit;
     private readonly TimeProvider _time;
-    private readonly byte[] _imageKey;
     private readonly byte[] _handoffKey;
     private readonly IUserRepository _users;
 
@@ -35,26 +33,22 @@ internal sealed class IdentityVerificationService : IIdentityVerificationService
     public IdentityVerificationService(
         IIdentityVerificationRepository verifications,
         IUserRepository users,
-        IContractFileStorage storage,
+        IMediaStorage storage,
+        IMediaCipher cipher,
         IAuditLogger audit,
-        IOptions<ContractStorageOptions> storageOptions,
+        IOptions<MediaOptions> mediaOptions,
         TimeProvider time)
     {
         _verifications = verifications;
         _users = users;
         _storage = storage;
+        _cipher = cipher;
         _audit = audit;
         _time = time;
-        // Khoá ảnh suy ra từ bí mật lưu trữ sẵn có, nên không phải thêm cấu hình mới; đổi bí mật đó là mất khả năng đọc ảnh cũ.
-        _imageKey = HKDF.DeriveKey(
-            HashAlgorithmName.SHA256,
-            Encoding.UTF8.GetBytes(storageOptions.Value.DocumentTokenSecret),
-            32,
-            info: "trustsign-ekyc-images-v1"u8.ToArray());
         // Khoá riêng cho link chuyển sang điện thoại, để token ký hợp đồng không bao giờ dùng thay được.
         _handoffKey = HKDF.DeriveKey(
             HashAlgorithmName.SHA256,
-            Encoding.UTF8.GetBytes(storageOptions.Value.DocumentTokenSecret),
+            Encoding.UTF8.GetBytes(mediaOptions.Value.TokenSecret),
             32,
             info: "trustsign-ekyc-handoff-v1"u8.ToArray());
     }
@@ -163,9 +157,9 @@ internal sealed class IdentityVerificationService : IIdentityVerificationService
             userId, qr.CitizenId, qr.FullName, qr.DateOfBirth, qr.Gender, qr.Address, qr.IssuedOn,
             command.FaceDistance, now);
 
-        await _storage.SaveAsync(verification.SelfieKey, Encrypt(command.Selfie), cancel);
-        await _storage.SaveAsync(verification.FrontKey, Encrypt(command.Front), cancel);
-        await _storage.SaveAsync(verification.BackKey, Encrypt(command.Back), cancel);
+        await _storage.SaveAsync(verification.SelfieKey, _cipher.Encrypt(command.Selfie), cancel);
+        await _storage.SaveAsync(verification.FrontKey, _cipher.Encrypt(command.Front), cancel);
+        await _storage.SaveAsync(verification.BackKey, _cipher.Encrypt(command.Back), cancel);
         await _verifications.AddAsync(verification, cancel);
 
         // Không ghi số CCCD vào audit: chuỗi hash không xoá được nên chỉ giữ mã hồ sơ.
@@ -210,7 +204,7 @@ internal sealed class IdentityVerificationService : IIdentityVerificationService
         };
 
         byte[]? sealedBytes = await _storage.ReadAsync(key, cancel);
-        return sealedBytes is null ? IdentityErrors.EkycNotFound : Decrypt(sealedBytes);
+        return sealedBytes is null ? IdentityErrors.EkycNotFound : _cipher.Decrypt(sealedBytes);
     }
 
     public async Task<Result> RevokeAsync(Guid adminUserId, Guid verificationId, string? reason, CancellationToken cancel)
@@ -242,29 +236,5 @@ internal sealed class IdentityVerificationService : IIdentityVerificationService
 
     private static bool IsImage(byte[] bytes) =>
         bytes.Length is > 8 and <= IdentityVerification.MaxImageBytes &&
-        ((bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) ||
-         (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47));
-
-    /// <summary>Định dạng lưu: nonce (12) | tag (16) | bản mã.</summary>
-    internal byte[] Encrypt(byte[] plain)
-    {
-        byte[] output = new byte[NonceSize + TagSize + plain.Length];
-        Span<byte> nonce = output.AsSpan(0, NonceSize);
-        RandomNumberGenerator.Fill(nonce);
-        using AesGcm aes = new(_imageKey, TagSize);
-        aes.Encrypt(nonce, plain, output.AsSpan(NonceSize + TagSize), output.AsSpan(NonceSize, TagSize));
-        return output;
-    }
-
-    internal byte[] Decrypt(byte[] sealedBytes)
-    {
-        byte[] plain = new byte[sealedBytes.Length - NonceSize - TagSize];
-        using AesGcm aes = new(_imageKey, TagSize);
-        aes.Decrypt(
-            sealedBytes.AsSpan(0, NonceSize),
-            sealedBytes.AsSpan(NonceSize + TagSize),
-            sealedBytes.AsSpan(NonceSize, TagSize),
-            plain);
-        return plain;
-    }
+        MediaContent.Detect(bytes) is MediaType.Jpeg or MediaType.Png;
 }

@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TrustSign.Api.Security;
 using TrustSign.Common;
+using TrustSign.Common.Security;
 
 namespace TrustSign.Api.Tests;
 

@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TrustSign.Api.Errors;
+using TrustSign.Api.Http;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 

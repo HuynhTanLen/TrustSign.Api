@@ -11,6 +11,8 @@ using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
+using TrustSign.Common.Security;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories.Identity;
 
@@ -63,7 +65,7 @@ public sealed class IdentityFlowTests
             _issuer,
             _emails,
             new NoOpSubscriptionProvisioner(),
-            new NoOpAuditLogger(),
+            new InMemoryAuditLogger(),
             smtpOptions,
             _clock);
     }
@@ -740,17 +742,5 @@ public sealed class IdentityFlowTests
     {
         public Task<Result> ProvisionTrialSubscriptionAsync(Guid tenantId, DateTimeOffset now, CancellationToken cancel = default) =>
             Task.FromResult(Result.Success());
-    }
-
-    private sealed class NoOpAuditLogger : IAuditLogger
-    {
-        public Task LogAsync(
-            Guid? tenantId,
-            Guid? actorUserId,
-            string action,
-            string resourceType,
-            string resourceId,
-            object? payload = null,
-            CancellationToken cancel = default) => Task.CompletedTask;
     }
 }

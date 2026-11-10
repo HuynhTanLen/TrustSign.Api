@@ -31,6 +31,7 @@ public interface IContractService
         Guid userId,
         string title,
         ReadOnlyMemory<byte> pdfBytes,
+        IReadOnlyList<SetSignerItemDto>? signers,
         CancellationToken cancel = default);
 
     Task<Result> SetSignersAsync(
@@ -72,6 +73,7 @@ public interface IContractService
     Task<Result> ProcessSignOrApproveAsync(
         Guid contractId,
         Guid signerId,
+        string? signaturePng,
         CancellationToken cancel = default);
 
     Task<Result> DeclineAsync(

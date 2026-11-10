@@ -22,5 +22,8 @@ internal sealed class AuditEventConfiguration : IEntityTypeConfiguration<AuditEv
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.CreatedAt);
         builder.HasIndex(e => e.Hash);
+
+        // Mỗi sự kiện chỉ có đúng một sự kiện kế tiếp: hai lần ghi đồng thời không thể rẽ nhánh chuỗi (F11).
+        builder.HasIndex(e => new { e.ResourceType, e.ResourceId, e.PrevHash }).IsUnique();
     }
 }

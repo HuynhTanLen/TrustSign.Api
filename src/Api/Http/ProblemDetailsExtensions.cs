@@ -1,7 +1,7 @@
 using TrustSign.Common;
 using Microsoft.AspNetCore.Mvc;
 
-namespace TrustSign.Api.Errors;
+namespace TrustSign.Api.Http;
 
 public static class ProblemDetailsExtensions
 {

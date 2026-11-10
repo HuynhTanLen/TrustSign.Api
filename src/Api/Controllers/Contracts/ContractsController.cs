@@ -1,11 +1,14 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TrustSign.Api.Errors;
+using TrustSign.Api.Http;
 using TrustSign.Api.Security;
 using TrustSign.Application.Modules.Contracts;
 using TrustSign.Application.Modules.Identity;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Contracts;
 
 namespace TrustSign.Api.Controllers.Contracts;
@@ -14,6 +17,12 @@ namespace TrustSign.Api.Controllers.Contracts;
 [Route("api/contracts")]
 public sealed class ContractsController(IContractService contractService) : ControllerBase
 {
+    // Multipart không tự bind được danh sách object, nên người nhận đi kèm dưới dạng một trường JSON.
+    private static readonly JsonSerializerOptions SignersJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     [Authorize(Policy = AuthorizationPolicies.TenantMember)]
     [HttpGet]
     public async Task<IActionResult> List(
@@ -77,6 +86,7 @@ public sealed class ContractsController(IContractService contractService) : Cont
     public async Task<IActionResult> Upload(
         [FromForm] IFormFile? file,
         [FromForm] string? title,
+        [FromForm] string? signers,
         CancellationToken cancel)
     {
         if (User.GetTenantId() is not { } tenantId ||
@@ -90,11 +100,24 @@ public sealed class ContractsController(IContractService contractService) : Cont
             return this.ToProblem(ContractErrors.InvalidPdfFile);
         }
 
+        List<SetSignerItemDto>? signerItems = null;
+        if (!string.IsNullOrWhiteSpace(signers))
+        {
+            try
+            {
+                signerItems = JsonSerializer.Deserialize<List<SetSignerItemDto>>(signers, SignersJsonOptions);
+            }
+            catch (JsonException)
+            {
+                return this.ToProblem(ContractErrors.InvalidSigners);
+            }
+        }
+
         await using MemoryStream ms = new((int)file.Length);
         await file.CopyToAsync(ms, cancel);
 
-        Result<CreatedContractResponseDto> result =
-            await contractService.UploadDraftAsync(tenantId, userId, title ?? string.Empty, ms.ToArray(), cancel);
+        Result<CreatedContractResponseDto> result = await contractService.UploadDraftAsync(
+            tenantId, userId, title ?? string.Empty, ms.ToArray(), signerItems, cancel);
 
         return result.IsSuccess
             ? StatusCode(StatusCodes.Status201Created, result.Value)
@@ -167,19 +190,4 @@ public sealed class ContractsController(IContractService contractService) : Cont
         return result.IsSuccess ? NoContent() : this.ToProblem(result.Error);
     }
 
-    [AllowAnonymous]
-    [HttpGet("{id:guid}/document")]
-    public async Task<IActionResult> GetDocument(
-        Guid id,
-        [FromQuery] string? token,
-        CancellationToken cancel)
-    {
-        Result<byte[]> result = await contractService.GetDocumentBytesByTokenAsync(id, token ?? string.Empty, cancel);
-        if (result.IsFailure)
-        {
-            return this.ToProblem(result.Error);
-        }
-
-        return File(result.Value, "application/pdf");
-    }
 }

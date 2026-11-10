@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
-using TrustSign.Api.Errors;
+using TrustSign.Api.Http;
 using TrustSign.Api.Observability;
 using TrustSign.Api.Security;
 using TrustSign.Application.DependencyInjection;
 using TrustSign.Application.Modules.Contracts;
 using TrustSign.Application.Modules.Identity;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Domain.Repositories;
 
@@ -71,12 +72,12 @@ if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("AutoMig
 
 if (app.Environment.IsProduction())
 {
-    var storageOpts = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<ContractStorageOptions>>().Value;
-    if (string.IsNullOrWhiteSpace(storageOpts.DocumentTokenSecret) ||
-        storageOpts.DocumentTokenSecret.Equals("trustsign_dev_document_token_hmac_secret_2026", StringComparison.Ordinal))
+    var storageOpts = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<MediaOptions>>().Value;
+    if (string.IsNullOrWhiteSpace(storageOpts.TokenSecret) ||
+        storageOpts.TokenSecret.Equals(MediaOptions.DevTokenSecret, StringComparison.Ordinal))
     {
         throw new InvalidOperationException(
-            "LỖI BẢO MẬT: Chưa cấu hình 'ContractStorage:DocumentTokenSecret' an toàn trên môi trường Production!");
+            "LỖI BẢO MẬT: Chưa cấu hình 'Media:TokenSecret' an toàn trên môi trường Production!");
     }
 }
 

@@ -1,10 +1,12 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TrustSign.Api.Errors;
+using TrustSign.Api.Http;
 using TrustSign.Api.Security;
 using TrustSign.Application.Modules.Identity;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Common;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Identity;
 
 namespace TrustSign.Api.Controllers.Identity;
@@ -80,8 +82,7 @@ public sealed class EkycController(IIdentityVerificationService ekyc) : Controll
 
         // Ảnh CCCD là dữ liệu nhạy cảm: không cho trình duyệt hay proxy lưu đệm.
         Response.Headers.CacheControl = "no-store";
-        string contentType = result.Value[0] == 0x89 ? "image/png" : "image/jpeg";
-        return File(result.Value, contentType);
+        return File(result.Value, MediaContent.ContentTypeOf(result.Value));
     }
 
     [Authorize(Roles = "Admin")]

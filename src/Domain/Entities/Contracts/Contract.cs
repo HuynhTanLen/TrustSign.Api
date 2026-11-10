@@ -1,5 +1,7 @@
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
+using TrustSign.Common.Validation;
 
 namespace TrustSign.Domain.Entities.Contracts;
 
@@ -142,12 +144,17 @@ public sealed class Contract
             string fullName = spec.FullName?.Trim() ?? string.Empty;
             string email = spec.Email?.Trim() ?? string.Empty;
 
-            if (fullName.Length is 0 or > 100 || !EmailValidator.IsValid(email))
+            int order = i + 1;
+            if (fullName.Length is 0 or > 100)
             {
-                return ContractErrors.InvalidSigners;
+                return ContractErrors.InvalidSignerName(order);
             }
 
-            int order = i + 1;
+            if (!EmailValidator.IsValid(email))
+            {
+                return ContractErrors.InvalidSignerEmail(order);
+            }
+
             int page = spec.PageNumber ?? 1;
 
             // Tọa độ mặc định xếp ngang/dọc ở cuối trang A4 (595 x 842 pt) nếu chưa chỉ định
@@ -242,7 +249,7 @@ public sealed class Contract
     /// Ký hoặc duyệt lượt hiện tại, chuyển sang người tiếp theo (bỏ qua Cc).
     /// Nếu là người cuối cùng trong luồng ký/duyệt -> tự động chuyển trạng thái hoàn tất (Completed).
     /// </summary>
-    public Result SignOrApproveCurrent(Guid signerId, DateTimeOffset now)
+    public Result SignOrApproveCurrent(Guid signerId, DateTimeOffset now, string? signatureStorageKey = null)
     {
         if (Status is not (ContractStatus.Pending or ContractStatus.Signing))
         {
@@ -265,7 +272,7 @@ public sealed class Contract
             return ContractErrors.CcCannotSignOrApprove;
         }
 
-        current.MarkSigned(now);
+        current.MarkSigned(now, signatureStorageKey);
 
         // Tìm người tiếp theo trong luồng ký/duyệt (bỏ qua Cc)
         ContractSigner? next = _signers

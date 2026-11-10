@@ -2,8 +2,10 @@ using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Audit;
 using TrustSign.Application.Modules.Contracts;
 using TrustSign.Application.Modules.Identity;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories.Identity;
 
@@ -26,8 +28,9 @@ public sealed class EkycTests
             _repo,
             _users,
             _storage,
-            new NoOpAuditLogger(),
-            Options.Create(new ContractStorageOptions()),
+            new AesMediaCipher(Options.Create(new MediaOptions())),
+            new InMemoryAuditLogger(),
+            Options.Create(new MediaOptions()),
             _clock);
     }
 
@@ -133,26 +136,24 @@ public sealed class EkycTests
         public Task SaveChangesAsync(CancellationToken cancel) => Task.CompletedTask;
     }
 
-    private sealed class InMemoryStorage : IContractFileStorage
+    private sealed class InMemoryStorage : IMediaStorage
     {
         public Dictionary<string, byte[]> Files { get; } = [];
 
-        public Task SaveAsync(string storageKey, ReadOnlyMemory<byte> pdfBytes, CancellationToken cancel = default)
+        public Task SaveAsync(string storageKey, ReadOnlyMemory<byte> bytes, CancellationToken cancel = default)
         {
-            Files[storageKey] = pdfBytes.ToArray();
+            Files[storageKey] = bytes.ToArray();
             return Task.CompletedTask;
         }
 
         public Task<byte[]?> ReadAsync(string storageKey, CancellationToken cancel = default) =>
             Task.FromResult(Files.GetValueOrDefault(storageKey));
 
-        public string CreateShortLivedDocumentUrl(Guid tenantId, Guid contractId, DateTimeOffset now) => throw new NotSupportedException();
-
-        public bool ValidateDocumentToken(string token, out Guid tenantId, out Guid contractId, DateTimeOffset now) => throw new NotSupportedException();
-
-        public string CreateSigningToken(Guid contractId, Guid signerId, DateTimeOffset now) => throw new NotSupportedException();
-
-        public bool ValidateSigningToken(string token, out Guid contractId, out Guid signerId, DateTimeOffset now) => throw new NotSupportedException();
+        public Task DeleteAsync(string storageKey, CancellationToken cancel = default)
+        {
+            Files.Remove(storageKey);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeClock(DateTimeOffset initial) : TimeProvider
@@ -179,11 +180,5 @@ public sealed class EkycTests
         }
 
         public Task SaveChangesAsync(CancellationToken cancel) => Task.CompletedTask;
-    }
-
-    private sealed class NoOpAuditLogger : IAuditLogger
-    {
-        public Task LogAsync(Guid? tenantId, Guid? actorUserId, string action, string resourceType, string resourceId, object? payload = null, CancellationToken cancel = default) =>
-            Task.CompletedTask;
     }
 }

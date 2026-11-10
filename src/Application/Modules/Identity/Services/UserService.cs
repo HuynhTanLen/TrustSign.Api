@@ -1,4 +1,5 @@
 using TrustSign.Common;
+using TrustSign.Common.Errors;
 using TrustSign.Domain.Entities.Identity;
 using TrustSign.Domain.IRepositories.Identity;
 

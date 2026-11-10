@@ -1,5 +1,7 @@
 using TrustSign.Common;
 using TrustSign.Common.Enums;
+using TrustSign.Common.Errors;
+using TrustSign.Common.Validation;
 
 namespace TrustSign.Domain.Entities.Identity;
 

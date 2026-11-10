@@ -29,7 +29,7 @@ internal sealed class AuditLogger(
         string? payloadJson = payload is null ? null : JsonSerializer.Serialize(payload);
         DateTimeOffset now = timeProvider.GetUtcNow();
 
-        AuditEvent? latest = await auditRepository.GetLatestForTenantAsync(tenantId, cancel);
+        AuditEvent? latest = await auditRepository.GetChainTipAsync(resourceType.Trim(), resourceId.Trim(), cancel);
         string? prevHash = latest?.Hash;
 
         AuditEvent auditEvent = AuditEvent.Create(
@@ -45,4 +45,11 @@ internal sealed class AuditLogger(
 
         await auditRepository.AddAsync(auditEvent, cancel);
     }
+
+    public async Task<IReadOnlyList<AuditEvent>> ListForResourceAsync(
+        Guid? tenantId,
+        string resourceType,
+        string resourceId,
+        CancellationToken cancel = default) =>
+        AuditEvent.OrderChain(await auditRepository.ListForResourceAsync(tenantId, resourceType, resourceId, cancel));
 }
