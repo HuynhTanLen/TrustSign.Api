@@ -10,6 +10,14 @@ internal sealed class EfTenantRepository(TrustSignDbContext db) : ITenantReposit
     public Task<Tenant?> FindByIdAsync(Guid tenantId, CancellationToken cancel) =>
         db.Tenants.FirstOrDefaultAsync(tenant => tenant.Id == tenantId, cancel);
 
+    public Task<bool> TaxCodeInUseAsync(string taxCode, Guid exceptTenantId, CancellationToken cancel) =>
+        db.Tenants.AnyAsync(
+            tenant => tenant.Id != exceptTenantId &&
+                tenant.TaxCode == taxCode &&
+                (tenant.VerificationStatus == TenantVerificationStatus.Pending ||
+                    tenant.VerificationStatus == TenantVerificationStatus.Verified),
+            cancel);
+
     public async Task<IReadOnlyList<UserTenantMembership>> GetUserTenantsAsync(Guid userId, CancellationToken cancel)
     {
         var rows = await (

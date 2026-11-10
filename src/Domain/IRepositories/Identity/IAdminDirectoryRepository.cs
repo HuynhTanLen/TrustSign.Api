@@ -12,7 +12,8 @@ public sealed record AdminTenantRow(
     int MembersCount,
     TenantStatus Status,
     string? LockReason,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    TenantVerificationStatus VerificationStatus = TenantVerificationStatus.Unverified);
 
 public sealed record AdminUserRow(
     Guid Id,

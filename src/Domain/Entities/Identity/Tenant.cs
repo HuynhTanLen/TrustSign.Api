@@ -38,6 +38,19 @@ public sealed class Tenant
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    public TenantVerificationStatus VerificationStatus { get; private set; }
+
+    public DateTimeOffset? VerificationSubmittedAt { get; private set; }
+
+    public DateTimeOffset? VerifiedAt { get; private set; }
+
+    public string? VerificationRejectReason { get; private set; }
+
+    /// <summary>Khóa file giấy đăng ký kinh doanh (đã mã hóa) trong kho Media; null khi chưa nộp.</summary>
+    public string? BusinessLicenseKey { get; private set; }
+
+    public static string BusinessLicenseKeyFor(Guid tenantId) => $"tenants/{tenantId:D}/verification/business-license.bin";
+
     public static Tenant Create(
         string name,
         string? taxCode,
@@ -58,9 +71,62 @@ public sealed class Tenant
         RepresentativeTitle = string.IsNullOrWhiteSpace(representativeTitle) ? null : representativeTitle.Trim(),
         Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim(),
         Status = TenantStatus.Active,
+        VerificationStatus = TenantVerificationStatus.Unverified,
         CreatedByUserId = createdByUserId,
         CreatedAt = now
     };
+
+    /// <summary>Nộp hồ sơ xác thực; hồ sơ bị từ chối được nộp lại, hồ sơ đang chờ hoặc đã duyệt thì không.</summary>
+    public Result SubmitVerification(DateTimeOffset now)
+    {
+        if (VerificationStatus is TenantVerificationStatus.Pending or TenantVerificationStatus.Verified)
+        {
+            return TenantVerificationErrors.AlreadySubmitted;
+        }
+
+        if (string.IsNullOrWhiteSpace(TaxCode) ||
+            string.IsNullOrWhiteSpace(Address) ||
+            string.IsNullOrWhiteSpace(RepresentativeName))
+        {
+            return TenantVerificationErrors.ProfileIncomplete;
+        }
+
+        VerificationStatus = TenantVerificationStatus.Pending;
+        VerificationSubmittedAt = now;
+        VerificationRejectReason = null;
+        BusinessLicenseKey = BusinessLicenseKeyFor(Id);
+        return Result.Success();
+    }
+
+    public Result ApproveVerification(DateTimeOffset now)
+    {
+        if (VerificationStatus != TenantVerificationStatus.Pending)
+        {
+            return TenantVerificationErrors.NotPending;
+        }
+
+        VerificationStatus = TenantVerificationStatus.Verified;
+        VerifiedAt = now;
+        return Result.Success();
+    }
+
+    public Result RejectVerification(string? reason)
+    {
+        string trimmed = reason?.Trim() ?? string.Empty;
+        if (trimmed.Length is 0 or > TenantVerificationErrors.MaxRejectReasonLength)
+        {
+            return TenantVerificationErrors.RejectReasonRequired;
+        }
+
+        if (VerificationStatus != TenantVerificationStatus.Pending)
+        {
+            return TenantVerificationErrors.NotPending;
+        }
+
+        VerificationStatus = TenantVerificationStatus.Rejected;
+        VerificationRejectReason = trimmed;
+        return Result.Success();
+    }
 
     /// <summary>Quản trị viên khóa doanh nghiệp: lần cấp token sau, thành viên không còn quyền vào doanh nghiệp này.</summary>
     public Result Lock(string? reason, DateTimeOffset now)
@@ -135,8 +201,18 @@ public sealed class Tenant
             return IdentityErrors.InvalidRepresentativeTitle;
         }
 
+        // Đổi tên hoặc mã số thuế là đổi pháp nhân: hồ sơ đã nộp hoặc đã duyệt không còn đúng với thông tin mới.
+        string? newTaxCode = string.IsNullOrWhiteSpace(taxCode) ? null : taxCode.Trim();
+        if (VerificationStatus is TenantVerificationStatus.Pending or TenantVerificationStatus.Verified &&
+            (!string.Equals(Name, trimmedName, StringComparison.Ordinal) || !string.Equals(TaxCode, newTaxCode, StringComparison.Ordinal)))
+        {
+            VerificationStatus = TenantVerificationStatus.Unverified;
+            VerifiedAt = null;
+            VerificationSubmittedAt = null;
+        }
+
         Name = trimmedName;
-        TaxCode = string.IsNullOrWhiteSpace(taxCode) ? null : taxCode.Trim();
+        TaxCode = newTaxCode;
         Address = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
         ContactEmail = string.IsNullOrWhiteSpace(contactEmail) ? null : User.NormalizeEmail(contactEmail);
         Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();

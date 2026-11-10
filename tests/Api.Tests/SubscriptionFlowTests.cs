@@ -327,6 +327,9 @@ public sealed class SubscriptionFlowTests
         Task<Tenant?> ITenantRepository.FindByIdAsync(Guid id, CancellationToken cancel) =>
             Task.FromResult(_tenants.FirstOrDefault(t => t.Id == id));
 
+        public Task<bool> TaxCodeInUseAsync(string taxCode, Guid exceptTenantId, CancellationToken cancel) =>
+            Task.FromResult(false);
+
         public Task AddTenantWithOwnerAsync(Tenant tenant, Membership ownerMembership, CancellationToken cancel)
         {
             _tenants.Add(tenant);

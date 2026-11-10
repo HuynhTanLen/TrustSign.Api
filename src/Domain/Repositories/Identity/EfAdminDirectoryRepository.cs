@@ -31,7 +31,8 @@ internal sealed class EfAdminDirectoryRepository(TrustSignDbContext db) : IAdmin
                 x.MembersCount,
                 x.Tenant.Status,
                 x.Tenant.LockReason,
-                x.Tenant.CreatedAt))
+                x.Tenant.CreatedAt,
+                x.Tenant.VerificationStatus))
             .ToListAsync(cancel);
 
     public async Task<IReadOnlyList<AdminUserRow>> ListUsersAsync(CancellationToken cancel) =>

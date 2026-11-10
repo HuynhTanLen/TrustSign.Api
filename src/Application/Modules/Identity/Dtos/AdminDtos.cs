@@ -12,7 +12,18 @@ public sealed record AdminTenantListItemDto(
     int MembersCount,
     bool IsLocked,
     string? LockReason,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string VerificationStatus = "Unverified");
+
+public sealed record AdminRejectVerificationRequestDto(string? Reason);
+
+/// <summary>Trạng thái xác thực pháp nhân của một doanh nghiệp, kèm việc đã có giấy đăng ký kinh doanh để xem hay chưa.</summary>
+public sealed record AdminVerificationDto(
+    string Status,
+    DateTimeOffset? SubmittedAt,
+    DateTimeOffset? VerifiedAt,
+    string? RejectReason,
+    bool HasLicense);
 
 public sealed record AdminUserListItemDto(
     Guid Id,
@@ -63,7 +74,8 @@ public sealed record AdminTenantProfileDto(
     AdminSubscriptionDto? Subscription,
     IReadOnlyList<AdminTenantMemberDto> Members,
     IReadOnlyDictionary<string, int> ContractCounts,
-    IReadOnlyList<AdminHistoryItemDto> History);
+    IReadOnlyList<AdminHistoryItemDto> History,
+    AdminVerificationDto? Verification = null);
 
 public sealed record AdminUserTenantDto(Guid TenantId, string TenantName, string Role, DateTimeOffset JoinedAt, bool TenantLocked);
 

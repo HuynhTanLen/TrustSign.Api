@@ -522,5 +522,7 @@ internal sealed class TenantService(
         tenant.CreatedAt,
         tenant.RepresentativeName,
         tenant.RepresentativeTitle,
-        tenant.Phone);
+        tenant.Phone,
+        tenant.VerificationStatus.ToString(),
+        tenant.VerificationRejectReason);
 }

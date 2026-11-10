@@ -24,6 +24,8 @@ public sealed record SigningSessionDto(
     DateTimeOffset? DueAt,
     IReadOnlyList<SigningFieldDto> Fields,
     string? DocumentUrl,
-    string Role);
+    string Role,
+    bool SenderVerified = false,
+    string? SenderTaxCode = null);
 
 public sealed record OtpVerificationDto(bool Verified, int AttemptsLeft);

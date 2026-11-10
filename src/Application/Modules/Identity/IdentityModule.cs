@@ -25,6 +25,9 @@ public static class IdentityModule
         services.AddScoped<IIdentityVerificationService, IdentityVerificationService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IIdentityVerifiedChecker, IdentityVerifiedChecker>();
+        services.AddScoped<TenantVerificationService>();
+        services.AddScoped<ITenantVerificationService>(sp => sp.GetRequiredService<TenantVerificationService>());
+        services.AddScoped<ITenantVerifiedChecker>(sp => sp.GetRequiredService<TenantVerificationService>());
 
         return services;
     }

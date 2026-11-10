@@ -8,6 +8,9 @@ public interface ITenantRepository
 {
     Task<Tenant?> FindByIdAsync(Guid tenantId, CancellationToken cancel);
 
+    /// <summary>Có doanh nghiệp khác (không tính <paramref name="exceptTenantId"/>) đang chờ duyệt hoặc đã xác thực với mã số thuế này không.</summary>
+    Task<bool> TaxCodeInUseAsync(string taxCode, Guid exceptTenantId, CancellationToken cancel);
+
     Task<IReadOnlyList<UserTenantMembership>> GetUserTenantsAsync(Guid userId, CancellationToken cancel);
 
     Task<Membership?> FindMembershipAsync(Guid tenantId, Guid userId, CancellationToken cancel);

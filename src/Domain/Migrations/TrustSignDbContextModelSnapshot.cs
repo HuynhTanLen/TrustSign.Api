@@ -689,6 +689,11 @@ namespace TrustSign.Domain.Migrations
                         .HasColumnType("character varying(300)")
                         .HasColumnName("address");
 
+                    b.Property<string>("BusinessLicenseKey")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("business_license_key");
+
                     b.Property<string>("ContactEmail")
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)")
@@ -743,11 +748,35 @@ namespace TrustSign.Domain.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("tax_code");
 
+                    b.Property<string>("VerificationRejectReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("verification_reject_reason");
+
+                    b.Property<string>("VerificationStatus")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("verification_status");
+
+                    b.Property<DateTimeOffset?>("VerificationSubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("verification_submitted_at");
+
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("verified_at");
+
                     b.HasKey("Id")
                         .HasName("pk_tenants");
 
                     b.HasIndex("CreatedByUserId")
                         .HasDatabaseName("ix_tenants_created_by_user_id");
+
+                    b.HasIndex("TaxCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tenants_tax_code")
+                        .HasFilter("tax_code IS NOT NULL AND verification_status IN ('Pending', 'Verified')");
 
                     b.ToTable("tenants", "identity");
                 });

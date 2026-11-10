@@ -62,7 +62,9 @@ internal sealed class SigningSessionService(
             contract.DueAt,
             fields,
             mediaSigner.CreateDocumentUrl(contract.TenantId, contract.Id, now),
-            signer.Role.ToString());
+            signer.Role.ToString(),
+            tenant?.VerificationStatus == TenantVerificationStatus.Verified,
+            tenant?.VerificationStatus == TenantVerificationStatus.Verified ? tenant.TaxCode : null);
     }
 
     public async Task<Result<DateTimeOffset>> RequestOtpAsync(string token, CancellationToken cancel)

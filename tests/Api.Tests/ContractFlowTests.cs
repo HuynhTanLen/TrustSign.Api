@@ -33,6 +33,7 @@ public sealed class ContractFlowTests : IDisposable
     private readonly ConfigurableQuotaService _quota = new();
     private readonly RecordingEmailSender _emails = new();
     private readonly ToggleIdentityChecker _identity = new();
+    private readonly ToggleTenantChecker _tenantVerified = new();
     private readonly InMemoryAuditLogger _audit;
 
     // Đủ để qua kiểm tra chữ ký PNG: 8 byte đầu là magic bytes của PNG.
@@ -72,6 +73,7 @@ public sealed class ContractFlowTests : IDisposable
             _store,
             _store,
             _identity,
+            _tenantVerified,
             _fileStorage,
             new HmacMediaSigner(storageOptions),
             _pdfGenerator,
@@ -450,6 +452,30 @@ public sealed class ContractFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task Unverified_tenant_can_draft_but_cannot_send_until_verified()
+    {
+        byte[] pdf = _pdfGenerator.RenderTemplateToPdf("HĐ", "HD-NV", "Nội dung", _clock.GetUtcNow());
+        Guid contractId = (await _contractService.UploadDraftAsync(
+            _tenantA, _ownerUserId, "Hợp đồng chờ xác thực", pdf,
+            [new SetSignerItemDto("Lê Văn C", "c@partner.vn", 1, PageNumber: 1, BoxX: 60, BoxY: 60, BoxWidth: 150, BoxHeight: 50)],
+            Cancel)).Value.ContractId;
+        var send = new SendContractRequestDto(_clock.GetUtcNow().AddDays(5));
+
+        _tenantVerified.Verified = false;
+        Result blocked = await _contractService.SendForSigningAsync(
+            _tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, send, Cancel);
+
+        Assert.Equal(TenantVerificationErrors.TenantNotVerified.Code, blocked.Error.Code);
+        Assert.Equal(0, _quota.ConsumedCount);
+
+        _tenantVerified.Verified = true;
+        Result sent = await _contractService.SendForSigningAsync(
+            _tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, send, Cancel);
+
+        Assert.True(sent.IsSuccess);
+    }
+
+    [Fact]
     public async Task Cross_tenant_isolation_blocks_reading_or_modifying_other_tenant_contracts_TC10_TC14()
     {
         byte[] validPdf = _pdfGenerator.RenderTemplateToPdf("HĐ A", "HD-A", "Mật", _clock.GetUtcNow());
@@ -719,6 +745,13 @@ public sealed class ContractFlowTests : IDisposable
         public bool Verified { get; set; } = true;
 
         public Task<bool> IsVerifiedAsync(Guid userId, CancellationToken cancel) => Task.FromResult(Verified);
+    }
+
+    private sealed class ToggleTenantChecker : TrustSign.Application.Modules.Identity.ITenantVerifiedChecker
+    {
+        public bool Verified { get; set; } = true;
+
+        public Task<bool> IsVerifiedAsync(Guid tenantId, CancellationToken cancel) => Task.FromResult(Verified);
     }
 
     private sealed class InMemoryContractStore :

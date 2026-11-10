@@ -857,6 +857,10 @@ public sealed class IdentityFlowTests
         Task<Tenant?> ITenantRepository.FindByIdAsync(Guid tenantId, CancellationToken cancel) =>
             Task.FromResult(_tenants.FirstOrDefault(t => t.Id == tenantId));
 
+        public Task<bool> TaxCodeInUseAsync(string taxCode, Guid exceptTenantId, CancellationToken cancel) =>
+            Task.FromResult(_tenants.Any(t => t.Id != exceptTenantId && t.TaxCode == taxCode &&
+                t.VerificationStatus is TrustSign.Common.Enums.TenantVerificationStatus.Pending or TrustSign.Common.Enums.TenantVerificationStatus.Verified));
+
         public Task<IReadOnlyList<UserTenantMembership>> GetUserTenantsAsync(Guid userId, CancellationToken cancel)
         {
             List<UserTenantMembership> list = (

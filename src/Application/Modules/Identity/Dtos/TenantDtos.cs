@@ -29,7 +29,9 @@ public sealed record TenantDto(
     DateTimeOffset CreatedAt,
     string? RepresentativeName = null,
     string? RepresentativeTitle = null,
-    string? Phone = null);
+    string? Phone = null,
+    string VerificationStatus = "Unverified",
+    string? VerificationRejectReason = null);
 
 public sealed record TenantSessionResponseDto(
     TenantDto Tenant,
