@@ -34,7 +34,8 @@ public sealed record AdminUserListItemDto(
     bool IsAdmin,
     bool IsLocked,
     string? LockReason,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IdentityVerified = false);
 
 public sealed record AdminHistoryItemDto(DateTimeOffset At, string Title, string? ActorEmail, string? Reason);
 

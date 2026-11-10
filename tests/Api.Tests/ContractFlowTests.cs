@@ -745,6 +745,9 @@ public sealed class ContractFlowTests : IDisposable
         public bool Verified { get; set; } = true;
 
         public Task<bool> IsVerifiedAsync(Guid userId, CancellationToken cancel) => Task.FromResult(Verified);
+
+        public Task<string?> GetVerifiedFullNameAsync(Guid userId, CancellationToken cancel) =>
+            Task.FromResult<string?>(Verified ? "Người đã xác minh" : null);
     }
 
     private sealed class ToggleTenantChecker : TrustSign.Application.Modules.Identity.ITenantVerifiedChecker

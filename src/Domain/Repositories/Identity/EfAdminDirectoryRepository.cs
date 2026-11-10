@@ -47,7 +47,8 @@ internal sealed class EfAdminDirectoryRepository(TrustSignDbContext db) : IAdmin
                 u.Status,
                 db.Memberships.Count(m => m.UserId == u.Id),
                 u.LockReason,
-                u.CreatedAt))
+                u.CreatedAt,
+                db.IdentityVerifications.Any(v => v.UserId == u.Id && v.Status == IdentityVerificationStatus.Verified)))
             .ToListAsync(cancel);
 
     public async Task<IReadOnlyDictionary<ContractStatus, int>> CountContractsByStatusAsync(Guid tenantId, CancellationToken cancel) =>

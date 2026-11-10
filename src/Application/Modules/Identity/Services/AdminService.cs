@@ -63,7 +63,8 @@ internal sealed class AdminService(
                 u.Role == UserRole.Admin,
                 u.Status == UserStatus.Locked,
                 u.LockReason,
-                u.CreatedAt))
+                u.CreatedAt,
+                u.IdentityVerified))
             .ToList();
 
     public async Task<Result<AdminTenantProfileDto>> GetTenantAsync(Guid tenantId, CancellationToken cancel)

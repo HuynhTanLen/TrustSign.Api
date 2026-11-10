@@ -33,6 +33,7 @@ public sealed class IdentityFlowTests
     private readonly RsaAccessTokenIssuer _issuer;
     private readonly IAuthService _auth;
     private readonly ITenantService _tenants;
+    private readonly FakeIdentityChecker _identity = new();
 
     public IdentityFlowTests()
     {
@@ -75,9 +76,39 @@ public sealed class IdentityFlowTests
             _emails,
             new NoOpSubscriptionProvisioner(),
             new InMemoryAuditLogger(),
+            _identity,
             smtpOptions,
             _signer,
             _clock);
+    }
+
+    /// <summary>eKYC giả: có <see cref="Name"/> nghĩa là mọi tài khoản đã xác minh với họ tên đó, null là chưa xác minh.</summary>
+    private sealed class FakeIdentityChecker : IIdentityVerifiedChecker
+    {
+        public string? Name { get; set; } = "Nguyễn Văn Chủ";
+
+        public Task<bool> IsVerifiedAsync(Guid userId, CancellationToken cancel) => Task.FromResult(Name is not null);
+
+        public Task<string?> GetVerifiedFullNameAsync(Guid userId, CancellationToken cancel) => Task.FromResult(Name);
+    }
+
+    [Fact]
+    public async Task Creating_a_tenant_needs_ekyc_and_takes_the_representative_from_it()
+    {
+        AuthSessionResultDto owner = await RegisterVerifyAndLoginAsync("dai_dien@company.vn", "Chủ DN");
+        Guid sessionId = ParseSessionId(owner.AccessToken);
+        var request = new CreateTenantRequestDto(
+            "Công ty Đại Diện", "0101234567", "Hà Nội", null, RepresentativeName: "Tên Gõ Tay", RepresentativeTitle: "Giám đốc");
+
+        _identity.Name = null;
+        Result<TenantSessionResponseDto> blocked = await _tenants.CreateTenantAsync(owner.User.Id, sessionId, request, CancellationToken.None);
+        Assert.Equal(IdentityErrors.IdentityNotVerifiedForTenant, blocked.Error);
+
+        _identity.Name = "Trần Thị Thật";
+        Result<TenantSessionResponseDto> created = await _tenants.CreateTenantAsync(owner.User.Id, sessionId, request, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        Assert.Equal("Trần Thị Thật", created.Value.Tenant.RepresentativeName);
+        Assert.Equal("Giám đốc", created.Value.Tenant.RepresentativeTitle);
     }
 
     [Fact]
@@ -318,7 +349,7 @@ public sealed class IdentityFlowTests
         Result<TenantDto> ownerUpdate = await _tenants.UpdateCurrentTenantAsync(
             tenantId,
             owner.User.Id,
-            new UpdateTenantRequestDto("Tên Đã Đổi", "0101234567-001", "TP.HCM", "owner_new@comp.vn", "0909888999", "Nguyễn Văn Chủ", "Tổng Giám đốc"),
+            new UpdateTenantRequestDto("Tên Đã Đổi", "0101234567-001", "TP.HCM", "owner_new@comp.vn", "0909888999", "Tên Gõ Tay Bị Bỏ Qua", "Tổng Giám đốc"),
             CancellationToken.None);
 
         Assert.True(ownerUpdate.IsSuccess);

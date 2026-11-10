@@ -21,6 +21,7 @@ internal sealed class TenantService(
     IEmailSender emailSender,
     ISubscriptionProvisioner subscriptionProvisioner,
     IAuditLogger auditLogger,
+    IIdentityVerifiedChecker identityChecker,
     IOptions<SmtpOptions> smtpOptions,
     IMediaSigner mediaSigner,
     TimeProvider timeProvider) : ITenantService
@@ -54,11 +55,6 @@ internal sealed class TenantService(
             return IdentityErrors.InvalidPhoneNumber;
         }
 
-        if (!string.IsNullOrWhiteSpace(request.RepresentativeName) && request.RepresentativeName.Trim().Length > 100)
-        {
-            return IdentityErrors.InvalidRepresentativeName;
-        }
-
         if (!string.IsNullOrWhiteSpace(request.RepresentativeTitle) && request.RepresentativeTitle.Trim().Length > 100)
         {
             return IdentityErrors.InvalidRepresentativeTitle;
@@ -70,6 +66,14 @@ internal sealed class TenantService(
             return IdentityErrors.SessionInvalid;
         }
 
+        // Người tạo doanh nghiệp chính là người đại diện, nên phải xác minh danh tính trước và lấy họ tên trên CCCD,
+        // không nhận tên người đại diện do client tự gõ.
+        string? representativeName = await identityChecker.GetVerifiedFullNameAsync(userId, cancel);
+        if (representativeName is null)
+        {
+            return IdentityErrors.IdentityNotVerifiedForTenant;
+        }
+
         DateTimeOffset now = timeProvider.GetUtcNow();
         Tenant tenant = Tenant.Create(
             request.Name,
@@ -78,7 +82,7 @@ internal sealed class TenantService(
             request.ContactEmail,
             user.Id,
             now,
-            request.RepresentativeName,
+            representativeName,
             request.RepresentativeTitle,
             request.Phone);
 
@@ -128,13 +132,16 @@ internal sealed class TenantService(
             return IdentityErrors.TenantAccessDenied;
         }
 
+        // Người đại diện lấy từ eKYC của chủ doanh nghiệp, không sửa tay; chủ doanh nghiệp chưa eKYC (dữ liệu cũ) thì giữ nguyên.
+        string? representativeName = await identityChecker.GetVerifiedFullNameAsync(actorUserId, cancel) ?? tenant.RepresentativeName;
+
         Result updateResult = tenant.Update(
             request.Name,
             request.TaxCode,
             request.Address,
             request.ContactEmail,
             request.Phone,
-            request.RepresentativeName,
+            representativeName,
             request.RepresentativeTitle);
 
         if (updateResult.IsFailure)
