@@ -47,6 +47,7 @@ internal sealed class ContractService(
         ["contract.sent"] = "Gửi hợp đồng đi ký",
         ["contract.signed"] = "Ký hợp đồng",
         ["contract.approved"] = "Duyệt hợp đồng",
+        ["contract.coordinated"] = "Điều phối người ký",
         ["contract.completed"] = "Hoàn tất hợp đồng",
         ["contract.declined"] = "Từ chối ký",
         ["contract.cancelled"] = "Hủy hợp đồng",
@@ -451,6 +452,71 @@ internal sealed class ContractService(
         return Result.Success();
     }
 
+    public async Task<Result> CoordinateAsync(
+        Guid contractId,
+        Guid signerId,
+        IReadOnlyList<SetSignerItemDto> recipients,
+        CancellationToken cancel = default)
+    {
+        Contract? contract = await contracts.FindByIdAsync(contractId, cancel);
+        if (contract is null)
+        {
+            return ContractErrors.ContractNotFound;
+        }
+
+        ContractSigner? coordinator = contract.Signers.FirstOrDefault(s => s.Id == signerId);
+        if (coordinator is null)
+        {
+            return ContractErrors.SignerNotFound;
+        }
+
+        // Gửi lại sau khi đã điều phối (mất phản hồi) trả thành công, không chèn người lần hai.
+        if (coordinator.Role == RecipientRole.Coordinator && coordinator.Status == SignerStatus.Signed)
+        {
+            return Result.Success();
+        }
+
+        // Giữ đúng thứ tự người điều phối nhập, không sắp theo Order client gửi.
+        List<ContractSignerSpec> specs = (recipients ?? [])
+            .Select(s => new ContractSignerSpec(s.FullName, s.Email, Role: s.Role, Phone: s.Phone, Organization: s.Organization, Title: s.Title))
+            .ToList();
+
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        Result coordinated = contract.Coordinate(signerId, specs, now);
+        if (coordinated.IsFailure)
+        {
+            return coordinated.Error;
+        }
+
+        string addedList = string.Join(", ", contract.Signers
+            .Where(s => s.SignOrder > coordinator.SignOrder && s.SignOrder <= coordinator.SignOrder + specs.Count)
+            .OrderBy(s => s.SignOrder)
+            .Select(s => $"#{s.SignOrder} {s.FullName} ({s.Email}, {RoleLabel(s.Role)})"));
+        await LogContractAsync(
+            contract,
+            null,
+            "contract.coordinated",
+            $"Lượt #{coordinator.SignOrder}: {coordinator.FullName} ({coordinator.Email}) đã điều phối: {addedList}",
+            cancel);
+
+        await contracts.SaveChangesAsync(cancel);
+
+        if (contract.Signers.FirstOrDefault(s => s.Status == SignerStatus.Current) is { } next)
+        {
+            await TrySendFirstSignerNotificationAsync(contract, next, cancel);
+        }
+
+        return Result.Success();
+    }
+
+    private static string RoleLabel(RecipientRole role) => role switch
+    {
+        RecipientRole.Approver => "duyệt",
+        RecipientRole.Cc => "nhận bản sao",
+        RecipientRole.Coordinator => "điều phối",
+        _ => "ký",
+    };
+
     public async Task<Result> DeclineAsync(
         Guid contractId,
         Guid signerId,
@@ -609,7 +675,12 @@ internal sealed class ContractService(
             string baseUrl = _smtpOptions.FrontendBaseUrl.TrimEnd('/');
             string safeTitle = WebUtility.HtmlEncode(contract.Title);
             string safeSigner = WebUtility.HtmlEncode(firstSigner.FullName);
-            string roleLabel = firstSigner.Role == RecipientRole.Approver ? "duyệt" : "ký";
+            string roleLabel = firstSigner.Role switch
+            {
+                RecipientRole.Approver => "duyệt",
+                RecipientRole.Coordinator => "điều phối",
+                _ => "ký",
+            };
             string signingToken = mediaSigner.CreateSigningToken(contract.Id, firstSigner.Id, timeProvider.GetUtcNow());
             string signUrl = $"{baseUrl}/sign/{Uri.EscapeDataString(signingToken)}";
 

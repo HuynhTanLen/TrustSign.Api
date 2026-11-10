@@ -651,6 +651,39 @@ public sealed class ContractFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task Coordinator_names_partner_signer_who_gets_invited_and_timeline_shows_coordination()
+    {
+        byte[] pdf = _pdfGenerator.RenderTemplateToPdf("HĐ", "HD-COORD", "Nội dung", _clock.GetUtcNow());
+        Guid contractId = (await _contractService.UploadDraftAsync(_tenantA, _ownerUserId, "HĐ điều phối", pdf, [
+            new SetSignerItemDto("Giám đốc A", "gd@a.vn", 1, PageNumber: 1, BoxX: 60, BoxY: 60, BoxWidth: 150, BoxHeight: 50),
+            new SetSignerItemDto("Đầu mối B", "tu@b.vn", 2, PageNumber: 1, BoxX: 350, BoxY: 60, BoxWidth: 150, BoxHeight: 50, Role: RecipientRole.Coordinator),
+        ], Cancel)).Value.ContractId;
+        Assert.True((await _contractService.SendForSigningAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, new SendContractRequestDto(_clock.GetUtcNow().AddDays(3)), Cancel)).IsSuccess);
+
+        Contract contract = (await _store.FindByIdAsync(_tenantA, contractId, Cancel))!;
+        Assert.True((await _contractService.ProcessSignOrApproveAsync(contractId, contract.Signers[0].Id, TestSignaturePng, Cancel)).IsSuccess);
+        Assert.Equal("tu@b.vn", _emails.LastSent!.To);
+        Assert.Contains("Mời điều phối", _emails.LastSent.Subject);
+
+        Guid coordinatorId = contract.Signers.Single(s => s.Role == RecipientRole.Coordinator).Id;
+        IReadOnlyList<SetSignerItemDto> partySide = [
+            new SetSignerItemDto("Pháp chế B", "lan@b.vn", Role: RecipientRole.Approver),
+            new SetSignerItemDto("Giám đốc B", "minh@b.vn", Role: RecipientRole.Signer),
+        ];
+        Assert.True((await _contractService.CoordinateAsync(contractId, coordinatorId, partySide, Cancel)).IsSuccess);
+        Assert.Equal("lan@b.vn", _emails.LastSent!.To);
+        Assert.Contains("Mời duyệt", _emails.LastSent.Subject);
+
+        // Gửi lại lần hai (mất phản hồi) không chèn thêm người.
+        Assert.True((await _contractService.CoordinateAsync(contractId, coordinatorId, partySide, Cancel)).IsSuccess);
+        Assert.Equal(4, contract.Signers.Count);
+
+        Result<ContractDetailDto> detail = await _contractService.GetByIdAsync(_tenantA, _ownerUserId, TenantRole.TenantOwner, contractId, Cancel);
+        Assert.Equal(["Khởi tạo hợp đồng nháp", "Gửi hợp đồng đi ký", "Ký hợp đồng", "Điều phối người ký"], detail.Value.Events.Select(e => e.Title));
+        Assert.Equal(["Signer", "Coordinator", "Approver", "Signer"], detail.Value.Signers.Select(s => s.Role));
+    }
+
+    [Fact]
     public async Task Decline_stops_flow_logs_event_and_emails_creator()
     {
         byte[] pdf = _pdfGenerator.RenderTemplateToPdf("HĐ", "HD-DECLINE", "Nội dung", _clock.GetUtcNow());

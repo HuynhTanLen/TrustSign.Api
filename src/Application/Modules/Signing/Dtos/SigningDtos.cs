@@ -6,6 +6,8 @@ public sealed record SignContractRequestDto(string? SignaturePng, string? Idempo
 
 public sealed record DeclineContractRequestDto(string? Reason);
 
+public sealed record CoordinateRequestDto(IReadOnlyList<TrustSign.Application.Modules.Contracts.SetSignerItemDto>? Recipients);
+
 public sealed record SigningFieldDto(
     int SignerOrder,
     string SignerName,

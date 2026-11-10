@@ -1,3 +1,4 @@
+using TrustSign.Application.Modules.Contracts;
 using TrustSign.Common;
 
 namespace TrustSign.Application.Modules.Signing;
@@ -15,6 +16,8 @@ public interface ISigningSessionService
     Result<OtpVerificationDto> VerifyOtp(string token, string? code);
 
     Task<Result> SignAsync(string token, string? signaturePng, CancellationToken cancel);
+
+    Task<Result> CoordinateAsync(string token, IReadOnlyList<SetSignerItemDto>? recipients, CancellationToken cancel);
 
     Task<Result> DeclineAsync(string token, string? reason, CancellationToken cancel);
 }

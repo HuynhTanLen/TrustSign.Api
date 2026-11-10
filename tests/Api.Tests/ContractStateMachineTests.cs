@@ -96,4 +96,75 @@ public sealed class ContractStateMachineTests
         Assert.False(done.MarkExpiredIfDue(Now.AddDays(10)));
         Assert.Equal(ContractStatus.Completed, done.Status);
     }
+
+    // Bên A ký (1) → đầu mối bên B điều phối (2, giữ ô ký cho bên B) → Cc (3).
+    private static Contract SentWithCoordinator()
+    {
+        Contract c = Contract.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "HD-C", "HĐ", null, "k", new string('a', 64), 100, Guid.NewGuid(), "A", Now).Value;
+        Assert.True(c.SetSigners([
+            new ContractSignerSpec("Giám đốc A", "gd@a.vn"),
+            new ContractSignerSpec("Đầu mối B", "tu@b.vn", PageNumber: 2, BoxX: 300, BoxY: 80, BoxWidth: 170, BoxHeight: 50, Role: RecipientRole.Coordinator),
+            new ContractSignerSpec("Kế toán", "kt@a.vn", Role: RecipientRole.Cc),
+        ], Now).IsSuccess);
+        Assert.True(c.MarkSent(Now.AddDays(3), Now).IsSuccess);
+        Assert.True(c.SignOrApproveCurrent(SignerAt(c, 1), Now).IsSuccess);
+        return c;
+    }
+
+    [Fact]
+    public void Coordinator_inserts_own_side_after_itself_and_hands_turn_to_first_added()
+    {
+        Contract c = SentWithCoordinator();
+        Guid coordinatorId = SignerAt(c, 2);
+
+        Result result = c.Coordinate(coordinatorId, [
+            new ContractSignerSpec("Pháp chế B", "lan@b.vn", Role: RecipientRole.Approver),
+            new ContractSignerSpec("Giám đốc B", "minh@b.vn", Role: RecipientRole.Signer),
+        ], Now);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            [("gd@a.vn", SignerStatus.Signed), ("tu@b.vn", SignerStatus.Signed), ("lan@b.vn", SignerStatus.Current), ("minh@b.vn", SignerStatus.Waiting), ("kt@a.vn", SignerStatus.Waiting)],
+            c.Signers.OrderBy(s => s.SignOrder).Select(s => (s.Email, s.Status)));
+        Assert.Equal([1, 2, 3, 4, 5], c.Signers.OrderBy(s => s.SignOrder).Select(s => s.SignOrder));
+
+        ContractSigner signerB = c.Signers.Single(s => s.Email == "minh@b.vn");
+        Assert.Equal((2, 300f, 80f, 170f, 50f), (signerB.PageNumber, signerB.BoxX, signerB.BoxY, signerB.BoxWidth, signerB.BoxHeight));
+
+        Assert.True(c.SignOrApproveCurrent(SignerAt(c, 3), Now).IsSuccess);
+        Assert.True(c.SignOrApproveCurrent(SignerAt(c, 4), Now).IsSuccess);
+        Assert.Equal(ContractStatus.Completed, c.Status);
+    }
+
+    [Fact]
+    public void Coordinator_cannot_sign_and_must_name_exactly_one_signer()
+    {
+        Contract c = SentWithCoordinator();
+        Guid coordinatorId = SignerAt(c, 2);
+
+        Assert.Equal(ContractErrors.CoordinatorMustCoordinate, c.SignOrApproveCurrent(coordinatorId, Now).Error);
+        Assert.Equal(ContractErrors.InvalidCoordination, c.Coordinate(coordinatorId, [new ContractSignerSpec("Duyệt", "d@b.vn", Role: RecipientRole.Approver)], Now).Error);
+        Assert.Equal(ContractErrors.InvalidCoordination, c.Coordinate(coordinatorId, [new ContractSignerSpec("K1", "k1@b.vn"), new ContractSignerSpec("K2", "k2@b.vn")], Now).Error);
+        Assert.Equal(ContractErrors.InvalidCoordination, c.Coordinate(coordinatorId, [new ContractSignerSpec("Đ", "d@b.vn", Role: RecipientRole.Coordinator), new ContractSignerSpec("K", "k@b.vn")], Now).Error);
+        Assert.Equal(ContractErrors.InvalidSignerEmail(3), c.Coordinate(coordinatorId, [new ContractSignerSpec("K", "sai-email")], Now).Error);
+        // Vượt tối đa 5 người nhận (đang có 3).
+        Assert.Equal(ContractErrors.InvalidCoordination, c.Coordinate(coordinatorId, [
+            new ContractSignerSpec("D1", "d1@b.vn", Role: RecipientRole.Approver),
+            new ContractSignerSpec("D2", "d2@b.vn", Role: RecipientRole.Approver),
+            new ContractSignerSpec("K", "k@b.vn"),
+        ], Now).Error);
+
+        Assert.Equal(3, c.Signers.Count);
+        Assert.Equal(SignerStatus.Current, c.Signers.Single(s => s.Id == coordinatorId).Status);
+        Assert.Equal(ContractErrors.NotCoordinator, c.Coordinate(SignerAt(c, 1), [new ContractSignerSpec("K", "k@b.vn")], Now).Error);
+    }
+
+    [Fact]
+    public void Contract_with_only_coordinator_can_be_sent()
+    {
+        Contract c = Contract.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "HD-D", "HĐ", null, "k", new string('a', 64), 100, Guid.NewGuid(), "A", Now).Value;
+        Assert.True(c.SetSigners([new ContractSignerSpec("Đầu mối B", "tu@b.vn", Role: RecipientRole.Coordinator)], Now).IsSuccess);
+        Assert.True(c.MarkSent(Now.AddDays(3), Now).IsSuccess);
+        Assert.Equal(SignerStatus.Current, c.Signers[0].Status);
+    }
 }

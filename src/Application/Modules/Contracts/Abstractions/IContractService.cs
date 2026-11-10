@@ -76,6 +76,13 @@ public interface IContractService
         string? signaturePng,
         CancellationToken cancel = default);
 
+    /// <summary>Người điều phối khai báo người duyệt/ký của bên mình rồi chuyển lượt cho người đầu tiên.</summary>
+    Task<Result> CoordinateAsync(
+        Guid contractId,
+        Guid signerId,
+        IReadOnlyList<SetSignerItemDto> recipients,
+        CancellationToken cancel = default);
+
     Task<Result> DeclineAsync(
         Guid contractId,
         Guid signerId,

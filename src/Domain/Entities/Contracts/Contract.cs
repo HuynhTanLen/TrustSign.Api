@@ -132,7 +132,7 @@ public sealed class Contract
             return ContractErrors.InvalidSigners;
         }
 
-        if (!specs.Any(s => s.Role == RecipientRole.Signer))
+        if (!specs.Any(s => HasSignatureBox(s.Role)))
         {
             return ContractErrors.AtLeastOneSignerRequired;
         }
@@ -145,14 +145,9 @@ public sealed class Contract
             string email = spec.Email?.Trim() ?? string.Empty;
 
             int order = i + 1;
-            if (fullName.Length is 0 or > 100)
+            if (ValidateIdentity(fullName, email, order) is { } identityError)
             {
-                return ContractErrors.InvalidSignerName(order);
-            }
-
-            if (!EmailValidator.IsValid(email))
-            {
-                return ContractErrors.InvalidSignerEmail(order);
+                return identityError;
             }
 
             int page = spec.PageNumber ?? 1;
@@ -165,7 +160,8 @@ public sealed class Contract
             float boxW = spec.BoxWidth ?? 180f;
             float boxH = spec.BoxHeight ?? 55f;
 
-            if (spec.Role == RecipientRole.Signer)
+            // Người điều phối giữ sẵn ô ký cho người ký bên đối tác mà họ sẽ chỉ định.
+            if (HasSignatureBox(spec.Role))
             {
                 if (page < 1 || boxX < 0 || boxY < 0 || boxW <= 10 || boxH <= 10)
                 {
@@ -220,7 +216,7 @@ public sealed class Contract
             return ContractErrors.InvalidSigners;
         }
 
-        if (!_signers.Any(s => s.Role == RecipientRole.Signer))
+        if (!_signers.Any(s => HasSignatureBox(s.Role)))
         {
             return ContractErrors.AtLeastOneSignerRequired;
         }
@@ -272,8 +268,96 @@ public sealed class Contract
             return ContractErrors.CcCannotSignOrApprove;
         }
 
-        current.MarkSigned(now, signatureStorageKey);
+        if (current.Role == RecipientRole.Coordinator)
+        {
+            return ContractErrors.CoordinatorMustCoordinate;
+        }
 
+        current.MarkSigned(now, signatureStorageKey);
+        AdvanceAfter(current, now);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Người điều phối (đang tới lượt) khai báo người duyệt/ký của bên mình. Những người này được chèn ngay sau
+    /// lượt điều phối theo thứ tự khai báo, các lượt phía sau lùi xuống; người ký nhận ô ký bên tạo đã đặt cho người điều phối.
+    /// </summary>
+    public Result Coordinate(Guid coordinatorId, IReadOnlyList<ContractSignerSpec> recipients, DateTimeOffset now)
+    {
+        if (Status is not (ContractStatus.Pending or ContractStatus.Signing))
+        {
+            return ContractErrors.ContractNotEditable;
+        }
+
+        ContractSigner? coordinator = _signers.FirstOrDefault(s => s.Id == coordinatorId);
+        if (coordinator is null)
+        {
+            return ContractErrors.SignerNotFound;
+        }
+
+        if (coordinator.Role != RecipientRole.Coordinator)
+        {
+            return ContractErrors.NotCoordinator;
+        }
+
+        if (coordinator.Status != SignerStatus.Current)
+        {
+            return ContractErrors.NotSignerTurn;
+        }
+
+        if (recipients is null ||
+            recipients.Count == 0 ||
+            _signers.Count + recipients.Count > MaxSigners ||
+            recipients.Count(r => r.Role == RecipientRole.Signer) != 1 ||
+            recipients.Any(r => r.Role == RecipientRole.Coordinator))
+        {
+            return ContractErrors.InvalidCoordination;
+        }
+
+        int baseOrder = coordinator.SignOrder;
+        List<ContractSigner> added = new(recipients.Count);
+        for (int i = 0; i < recipients.Count; i++)
+        {
+            ContractSignerSpec spec = recipients[i];
+            string fullName = spec.FullName?.Trim() ?? string.Empty;
+            string email = spec.Email?.Trim() ?? string.Empty;
+            int order = baseOrder + i + 1;
+            if (ValidateIdentity(fullName, email, order) is { } identityError)
+            {
+                return identityError;
+            }
+
+            bool signs = spec.Role == RecipientRole.Signer;
+            added.Add(ContractSigner.Create(
+                Id,
+                order,
+                fullName,
+                email,
+                signs ? coordinator.PageNumber : 1,
+                signs ? coordinator.BoxX : 0,
+                signs ? coordinator.BoxY : 0,
+                signs ? coordinator.BoxWidth : 0,
+                signs ? coordinator.BoxHeight : 0,
+                now,
+                spec.Role,
+                spec.Phone,
+                spec.Organization,
+                spec.Title));
+        }
+
+        foreach (ContractSigner later in _signers.Where(s => s.SignOrder > baseOrder))
+        {
+            later.ShiftOrder(added.Count);
+        }
+
+        _signers.AddRange(added);
+        coordinator.MarkSigned(now);
+        AdvanceAfter(coordinator, now);
+        return Result.Success();
+    }
+
+    private void AdvanceAfter(ContractSigner current, DateTimeOffset now)
+    {
         // Tìm người tiếp theo trong luồng ký/duyệt (bỏ qua Cc)
         ContractSigner? next = _signers
             .Where(s => s.Role != RecipientRole.Cc && s.SignOrder > current.SignOrder && s.Status == SignerStatus.Waiting)
@@ -290,8 +374,19 @@ public sealed class Contract
             Status = ContractStatus.Completed;
             CompletedAt = now;
         }
+    }
 
-        return Result.Success();
+    private static bool HasSignatureBox(RecipientRole role) =>
+        role is RecipientRole.Signer or RecipientRole.Coordinator;
+
+    private static Error? ValidateIdentity(string fullName, string email, int order)
+    {
+        if (fullName.Length is 0 or > 100)
+        {
+            return ContractErrors.InvalidSignerName(order);
+        }
+
+        return EmailValidator.IsValid(email) ? null : ContractErrors.InvalidSignerEmail(order);
     }
 
     /// <summary>

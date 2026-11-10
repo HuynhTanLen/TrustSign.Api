@@ -42,6 +42,13 @@ public sealed class SigningController(ISigningSessionService signing) : Controll
         return result.IsSuccess ? Ok(new { success = true }) : this.ToProblem(result.Error);
     }
 
+    [HttpPost("{token}/coordinate")]
+    public async Task<IActionResult> Coordinate(string token, [FromBody] CoordinateRequestDto request, CancellationToken cancel)
+    {
+        Result result = await signing.CoordinateAsync(token, request?.Recipients, cancel);
+        return result.IsSuccess ? Ok(new { success = true }) : this.ToProblem(result.Error);
+    }
+
     [HttpPost("{token}/decline")]
     public async Task<IActionResult> Decline(string token, [FromBody] DeclineContractRequestDto request, CancellationToken cancel)
     {
