@@ -54,6 +54,18 @@ namespace TrustSign.Domain.Migrations
                 type: "timestamp with time zone",
                 nullable: true);
 
+            // Dữ liệu cũ có thể trùng mã số thuế (trước đây không ràng buộc). Giữ doanh nghiệp tạo sớm nhất là Đã xác thực,
+            // các bản trùng về Chưa xác thực để chủ doanh nghiệp nộp lại hồ sơ; không thì chỉ mục duy nhất bên dưới không tạo được.
+            migrationBuilder.Sql("""
+                UPDATE identity.tenants t
+                SET verification_status = 'Unverified'
+                WHERE t.tax_code IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1 FROM identity.tenants o
+                      WHERE o.tax_code = t.tax_code
+                        AND (o.created_at < t.created_at OR (o.created_at = t.created_at AND o.id < t.id)));
+                """);
+
             migrationBuilder.CreateIndex(
                 name: "ix_tenants_tax_code",
                 schema: "identity",
