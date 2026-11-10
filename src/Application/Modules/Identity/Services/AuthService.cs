@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Options;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Common;
 using TrustSign.Common.Enums;
@@ -16,14 +17,16 @@ internal sealed class AuthService(
     IPasswordResetTokenRepository passwordResetTokens,
     IRefreshTokenRepository refreshTokens,
     ITenantRepository tenants,
+    IExternalLoginRepository externalLogins,
+    IExternalIdentityVerifier externalVerifier,
     IPasswordHasher passwordHasher,
     IAccessTokenIssuer tokenIssuer,
     IEmailSender emailSender,
     IOptions<JwtOptions> jwtOptions,
     IOptions<SmtpOptions> smtpOptions,
+    IMediaSigner mediaSigner,
     TimeProvider timeProvider) : IAuthService
 {
-    public const int MinPasswordLength = 8;
     public static readonly TimeSpan PasswordResetTokenLifetime = TimeSpan.FromMinutes(30);
 
     private readonly JwtOptions _jwtOptions = jwtOptions.Value;
@@ -51,7 +54,7 @@ internal sealed class AuthService(
             return IdentityErrors.InvalidEmail;
         }
 
-        if (!IsAcceptablePassword(request.Password))
+        if (!PasswordValidator.IsAcceptable(request.Password, request.Email, request.FullName))
         {
             return IdentityErrors.WeakPassword;
         }
@@ -149,35 +152,150 @@ internal sealed class AuthService(
             return canLogin.Error;
         }
 
-        if (!passwordHasher.Verify(request.Password, user.PasswordHash))
+        if (user.PasswordHash is null)
         {
-            user.RecordFailedLogin(now);
-            await users.SaveChangesAsync(cancel);
-
-            if (user.LockedUntil is not null && now < user.LockedUntil)
-            {
-                return IdentityErrors.AccountLocked;
-            }
-
-            return IdentityErrors.InvalidCredentials;
+            return IdentityErrors.PasswordNotSet;
         }
 
-        user.RecordSuccessfulLogin(now);
+        if (!passwordHasher.Verify(request.Password, user.PasswordHash))
+        {
+            return await FailPasswordAsync(user, now, cancel);
+        }
 
-        IReadOnlyList<UserTenantMembership> memberships = await tenants.GetUserTenantsAsync(user.Id, cancel);
-        UserTenantMembership? active = SelectActiveTenant(memberships, preferredTenantId: null);
+        return await StartSessionAsync(user, now, cancel);
+    }
 
-        (string rawRefresh, string refreshHash) = TokenGenerator.GeneratePair();
-        RefreshToken refresh = RefreshToken.IssueNewSession(
-            user.Id,
-            active?.Tenant.Id,
-            refreshHash,
-            now,
-            TimeSpan.FromDays(_jwtOptions.RefreshTokenDays));
+    public async Task<Result<AuthSessionResultDto>> GoogleLoginAsync(GoogleLoginRequestDto request, CancellationToken cancel)
+    {
+        Result<ExternalIdentity> identity = await VerifyGoogleAsync(request.IdToken, cancel);
+        if (identity.IsFailure)
+        {
+            return identity.Error;
+        }
 
-        await refreshTokens.AddAsync(refresh, cancel);
+        DateTimeOffset now = timeProvider.GetUtcNow();
+        ExternalLogin? link = await externalLogins.FindAsync(ExternalLogin.GoogleProvider, identity.Value.Subject, cancel);
+        User? user;
 
-        return IssueSessionResult(user, refresh.SessionId, rawRefresh, refresh.ExpiresAt, memberships, active);
+        if (link is not null)
+        {
+            user = await users.FindByIdAsync(link.UserId, cancel);
+            if (user is null)
+            {
+                return IdentityErrors.SessionInvalid;
+            }
+        }
+        else
+        {
+            user = await users.FindByEmailAsync(identity.Value.Email, cancel);
+            if (user is null)
+            {
+                if (!request.AcceptTerms)
+                {
+                    return IdentityErrors.TermsMustBeAccepted;
+                }
+
+                string name = string.IsNullOrWhiteSpace(identity.Value.Name)
+                    ? identity.Value.Email.Split('@')[0]
+                    : identity.Value.Name.Trim();
+                user = User.RegisterExternal(identity.Value.Email, name.Length > 100 ? name[..100] : name, now);
+                await users.AddAsync(user, cancel);
+            }
+            else
+            {
+                // Chỉ liên kết khi người gọi chứng minh được là chủ tài khoản cũ, tránh chiếm tài khoản qua email trùng.
+                if (string.IsNullOrEmpty(request.Password))
+                {
+                    return IdentityErrors.GoogleLinkRequiresPassword;
+                }
+
+                if (user.Status == UserStatus.Locked)
+                {
+                    return IdentityErrors.AccountDisabled;
+                }
+
+                if (user.LockedUntil is not null && now < user.LockedUntil)
+                {
+                    return IdentityErrors.AccountLocked;
+                }
+
+                if (user.PasswordHash is null || !passwordHasher.Verify(request.Password, user.PasswordHash))
+                {
+                    return await FailPasswordAsync(user, now, cancel);
+                }
+
+                // Mật khẩu đúng và Google đã xác minh email, nên tài khoản đang chờ xác minh email được kích hoạt luôn.
+                user.MarkEmailVerified();
+            }
+
+            await externalLogins.AddAsync(
+                ExternalLogin.Create(user.Id, ExternalLogin.GoogleProvider, identity.Value.Subject, identity.Value.Email, now),
+                cancel);
+        }
+
+        Result canLogin = user.CanLogin(now);
+        if (canLogin.IsFailure)
+        {
+            return canLogin.Error;
+        }
+
+        return await StartSessionAsync(user, now, cancel);
+    }
+
+    public async Task<Result<ActionMessageDto>> LinkGoogleAsync(Guid userId, string idToken, CancellationToken cancel)
+    {
+        User? user = await users.FindByIdAsync(userId, cancel);
+        if (user is null)
+        {
+            return IdentityErrors.SessionInvalid;
+        }
+
+        Result<ExternalIdentity> identity = await VerifyGoogleAsync(idToken, cancel);
+        if (identity.IsFailure)
+        {
+            return identity.Error;
+        }
+
+        ExternalLogin? existing = await externalLogins.FindAsync(ExternalLogin.GoogleProvider, identity.Value.Subject, cancel);
+        if (existing is not null)
+        {
+            return existing.UserId == userId
+                ? new ActionMessageDto(true, "Tài khoản đã được liên kết Google.")
+                : IdentityErrors.GoogleAlreadyLinked;
+        }
+
+        if (await externalLogins.FindByUserAsync(userId, ExternalLogin.GoogleProvider, cancel) is not null)
+        {
+            return IdentityErrors.GoogleAlreadyLinked;
+        }
+
+        await externalLogins.AddAsync(
+            ExternalLogin.Create(userId, ExternalLogin.GoogleProvider, identity.Value.Subject, identity.Value.Email, timeProvider.GetUtcNow()),
+            cancel);
+        return new ActionMessageDto(true, "Đã liên kết tài khoản Google.");
+    }
+
+    public async Task<Result<ActionMessageDto>> UnlinkGoogleAsync(Guid userId, CancellationToken cancel)
+    {
+        User? user = await users.FindByIdAsync(userId, cancel);
+        if (user is null)
+        {
+            return IdentityErrors.SessionInvalid;
+        }
+
+        ExternalLogin? link = await externalLogins.FindByUserAsync(userId, ExternalLogin.GoogleProvider, cancel);
+        if (link is null)
+        {
+            return IdentityErrors.GoogleNotLinked;
+        }
+
+        if (user.PasswordHash is null)
+        {
+            return IdentityErrors.CannotUnlinkLastMethod;
+        }
+
+        await externalLogins.RemoveAsync(link, cancel);
+        return new ActionMessageDto(true, "Đã hủy liên kết Google.");
     }
 
     public async Task<Result<AuthSessionResultDto>> RefreshAsync(string? rawRefreshToken, CancellationToken cancel)
@@ -283,11 +401,6 @@ internal sealed class AuthService(
             return IdentityErrors.PasswordResetTokenInvalid;
         }
 
-        if (!IsAcceptablePassword(request.NewPassword))
-        {
-            return IdentityErrors.WeakPassword;
-        }
-
         string tokenHash = TokenGenerator.HashToken(request.Token.Trim());
         PasswordResetToken? token = await passwordResetTokens.FindByTokenHashAsync(tokenHash, cancel);
         if (token is null)
@@ -305,6 +418,12 @@ internal sealed class AuthService(
         if (user is null || user.Status != UserStatus.Active)
         {
             return IdentityErrors.PasswordResetTokenInvalid;
+        }
+
+        // Kiểm tra trước khi tiêu thụ token để người dùng đặt lại được bằng cùng liên kết nếu mật khẩu chưa đạt.
+        if (!PasswordValidator.IsAcceptable(request.NewPassword, user.Email, user.FullName))
+        {
+            return IdentityErrors.WeakPassword;
         }
 
         Result consume = token.Consume(now);
@@ -336,12 +455,13 @@ internal sealed class AuthService(
         }
 
         if (string.IsNullOrEmpty(request.CurrentPassword) ||
+            user.PasswordHash is null ||
             !passwordHasher.Verify(request.CurrentPassword, user.PasswordHash))
         {
             return IdentityErrors.CurrentPasswordIncorrect;
         }
 
-        if (!IsAcceptablePassword(request.NewPassword))
+        if (!PasswordValidator.IsAcceptable(request.NewPassword, user.Email, user.FullName))
         {
             return IdentityErrors.WeakPassword;
         }
@@ -360,11 +480,54 @@ internal sealed class AuthService(
         return new ActionMessageDto(true, "Đổi mật khẩu thành công. Các phiên đăng nhập khác đã bị đăng xuất.");
     }
 
-    private static bool IsAcceptablePassword(string? password) =>
-        !string.IsNullOrWhiteSpace(password) &&
-        password.Length >= MinPasswordLength &&
-        password.Any(char.IsLetter) &&
-        password.Any(char.IsDigit);
+    private async Task<Result<ExternalIdentity>> VerifyGoogleAsync(string? idToken, CancellationToken cancel)
+    {
+        if (string.IsNullOrWhiteSpace(idToken))
+        {
+            return IdentityErrors.ExternalTokenInvalid;
+        }
+
+        ExternalIdentity? identity = await externalVerifier.VerifyGoogleAsync(idToken.Trim(), cancel);
+        if (identity is null || string.IsNullOrWhiteSpace(identity.Subject) || !EmailValidator.IsValid(identity.Email))
+        {
+            return IdentityErrors.ExternalTokenInvalid;
+        }
+
+        return identity.EmailVerified ? identity : IdentityErrors.GoogleEmailNotVerified;
+    }
+
+    private async Task<Result<AuthSessionResultDto>> FailPasswordAsync(User user, DateTimeOffset now, CancellationToken cancel)
+    {
+        user.RecordFailedLogin(now);
+        await users.SaveChangesAsync(cancel);
+
+        if (user.LockedUntil is not null && now < user.LockedUntil)
+        {
+            return IdentityErrors.AccountLocked;
+        }
+
+        return IdentityErrors.InvalidCredentials;
+    }
+
+    private async Task<Result<AuthSessionResultDto>> StartSessionAsync(User user, DateTimeOffset now, CancellationToken cancel)
+    {
+        user.RecordSuccessfulLogin(now);
+
+        IReadOnlyList<UserTenantMembership> memberships = await tenants.GetUserTenantsAsync(user.Id, cancel);
+        UserTenantMembership? active = SelectActiveTenant(memberships, preferredTenantId: null);
+
+        (string rawRefresh, string refreshHash) = TokenGenerator.GeneratePair();
+        RefreshToken refresh = RefreshToken.IssueNewSession(
+            user.Id,
+            active?.Tenant.Id,
+            refreshHash,
+            now,
+            TimeSpan.FromDays(_jwtOptions.RefreshTokenDays));
+
+        await refreshTokens.AddAsync(refresh, cancel);
+
+        return IssueSessionResult(user, refresh.SessionId, rawRefresh, refresh.ExpiresAt, memberships, active);
+    }
 
     private async Task SendPasswordResetEmailAsync(User user, string rawToken, CancellationToken cancel)
     {
@@ -406,7 +569,8 @@ internal sealed class AuthService(
             : new TenantClaimContext(active.Tenant.Id, active.Membership.Role, active.Tenant.Status);
 
         AccessTokenDto access = tokenIssuer.Issue(user.Id, sessionId, user.Role, tenantClaim);
-        UserProfileDto profile = user.ToProfileDto(memberships, active?.Tenant.Id);
+        UserProfileDto profile = user.ToProfileDto(
+            memberships, active?.Tenant.Id, avatarUrl: mediaSigner.CreateAvatarUrl(user, timeProvider.GetUtcNow()));
 
         return new AuthSessionResultDto(
             access.AccessToken,

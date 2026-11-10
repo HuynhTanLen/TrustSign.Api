@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Extensions.Options;
 using TrustSign.Application.Modules.Audit;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
@@ -21,6 +22,7 @@ internal sealed class TenantService(
     ISubscriptionProvisioner subscriptionProvisioner,
     IAuditLogger auditLogger,
     IOptions<SmtpOptions> smtpOptions,
+    IMediaSigner mediaSigner,
     TimeProvider timeProvider) : ITenantService
 {
     private static readonly TimeSpan InvitationLifetime = TimeSpan.FromDays(7);
@@ -190,7 +192,8 @@ internal sealed class TenantService(
         return new AuthResponseDto(
             access.AccessToken,
             access.ExpiresAt,
-            user.ToProfileDto(memberships, target.Tenant.Id));
+            user.ToProfileDto(
+                memberships, target.Tenant.Id, avatarUrl: mediaSigner.CreateAvatarUrl(user, timeProvider.GetUtcNow())));
     }
 
     public async Task<Result<IReadOnlyList<TenantMemberDto>>> GetMembersAsync(Guid tenantId, CancellationToken cancel)
@@ -490,7 +493,8 @@ internal sealed class TenantService(
             ToTenantDto(tenant, role),
             access.AccessToken,
             access.ExpiresAt,
-            user.ToProfileDto(memberships, tenant.Id));
+            user.ToProfileDto(
+                memberships, tenant.Id, avatarUrl: mediaSigner.CreateAvatarUrl(user, timeProvider.GetUtcNow())));
     }
 
     private async Task UpdateSessionActiveTenantAsync(

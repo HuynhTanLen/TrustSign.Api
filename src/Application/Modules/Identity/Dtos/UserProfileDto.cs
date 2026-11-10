@@ -12,4 +12,7 @@ public sealed record UserProfileDto(
     Guid? ActiveTenantId,
     IReadOnlyList<UserTenantDto> Tenants,
     string? PhoneNumber = null,
-    string? JobTitle = null);
+    string? JobTitle = null,
+    bool HasPassword = true,
+    bool GoogleLinked = false,
+    string? AvatarUrl = null);

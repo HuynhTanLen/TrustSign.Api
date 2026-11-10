@@ -28,6 +28,13 @@ public sealed record ResetPasswordRequestDto(string Token, string NewPassword);
 
 public sealed record ChangePasswordRequestDto(string CurrentPassword, string NewPassword);
 
+/// <param name="IdToken">Firebase ID token sau khi người dùng chọn tài khoản Google.</param>
+/// <param name="AcceptTerms">Bắt buộc khi Google tạo tài khoản mới (NĐ 13/2023).</param>
+/// <param name="Password">Chỉ cần khi email Google trùng một tài khoản đã có: chứng minh chủ tài khoản trước khi liên kết.</param>
+public sealed record GoogleLoginRequestDto(string IdToken, bool AcceptTerms = false, string? Password = null);
+
+public sealed record GoogleLinkRequestDto(string IdToken);
+
 public sealed record AuthResponseDto(string AccessToken, DateTimeOffset ExpiresAt, UserProfileDto User);
 
 public sealed record AuthSessionResultDto(

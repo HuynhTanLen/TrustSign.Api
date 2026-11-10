@@ -22,7 +22,8 @@ public sealed class User
 
     public string FullName { get; private set; } = null!;
 
-    public string PasswordHash { get; private set; } = null!;
+    /// <summary>Null với tài khoản chỉ đăng nhập bằng Google; đặt mật khẩu qua luồng quên mật khẩu.</summary>
+    public string? PasswordHash { get; private set; }
 
     public UserRole Role { get; private set; }
 
@@ -32,9 +33,17 @@ public sealed class User
 
     public DateTimeOffset? LockedUntil { get; private set; }
 
+    /// <summary>Lý do quản trị viên khóa tài khoản (Status = Locked); khác LockedUntil là khóa tạm do nhập sai mật khẩu.</summary>
+    public string? LockReason { get; private set; }
+
+    public DateTimeOffset? LockedAt { get; private set; }
+
     public string? PhoneNumber { get; private set; }
 
     public string? JobTitle { get; private set; }
+
+    /// <summary>Khóa file ảnh đại diện trong kho Media; null là chưa có ảnh.</summary>
+    public string? AvatarKey { get; private set; }
 
     public DateTimeOffset? TermsAcceptedAt { get; private set; }
 
@@ -60,6 +69,20 @@ public sealed class User
         PhoneNumber = string.IsNullOrWhiteSpace(phoneNumber) ? null : phoneNumber.Trim(),
         TermsAcceptedAt = termsAcceptedAt ?? now,
         TermsVersion = string.IsNullOrWhiteSpace(termsVersion) ? DefaultTermsVersion : termsVersion.Trim(),
+        CreatedAt = now
+    };
+
+    /// <summary>Tài khoản tạo từ Google: Google đã xác minh email nên Active ngay và chưa có mật khẩu.</summary>
+    public static User RegisterExternal(string email, string fullName, DateTimeOffset now) => new()
+    {
+        Id = Guid.CreateVersion7(now),
+        Email = NormalizeEmail(email),
+        FullName = fullName.Trim(),
+        PasswordHash = null,
+        Role = UserRole.User,
+        Status = UserStatus.Active,
+        TermsAcceptedAt = now,
+        TermsVersion = DefaultTermsVersion,
         CreatedAt = now
     };
 
@@ -150,6 +173,47 @@ public sealed class User
         FailedLoginCount = 0;
         LockedUntil = null;
     }
+
+    /// <summary>Quản trị viên khóa tài khoản: không đăng nhập và không làm mới token được nữa (F14).</summary>
+    public Result Lock(string? reason, DateTimeOffset now)
+    {
+        string trimmed = reason?.Trim() ?? string.Empty;
+        if (trimmed.Length is 0 or > AdminErrors.MaxLockReasonLength)
+        {
+            return AdminErrors.LockReasonRequired;
+        }
+
+        if (Role == UserRole.Admin)
+        {
+            return AdminErrors.CannotLockAdmin;
+        }
+
+        // Chỉ khóa tài khoản đang hoạt động: tài khoản Pending chưa đăng nhập được, và mở khóa luôn trả về Active.
+        if (Status != UserStatus.Active)
+        {
+            return Status == UserStatus.Locked ? AdminErrors.AlreadyLocked : AdminErrors.UserNotActive;
+        }
+
+        Status = UserStatus.Locked;
+        LockReason = trimmed;
+        LockedAt = now;
+        return Result.Success();
+    }
+
+    public Result Unlock()
+    {
+        if (Status != UserStatus.Locked)
+        {
+            return AdminErrors.NotLocked;
+        }
+
+        Status = UserStatus.Active;
+        LockReason = null;
+        LockedAt = null;
+        return Result.Success();
+    }
+
+    public void SetAvatarKey(string? key) => AvatarKey = key;
 
     public Result UpdateProfile(string fullName, string? phoneNumber = null, string? jobTitle = null)
     {

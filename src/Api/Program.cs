@@ -17,6 +17,8 @@ builder.Services.AddDomainRepositories(builder.Configuration.GetConnectionString
 builder.Services.AddApplication();
 builder.Services.AddTrustSignJwtAuthentication(builder.Environment);
 builder.Services.AddTrustSignRateLimiter();
+builder.Services.AddOptions<FirebaseOptions>().BindConfiguration(FirebaseOptions.SectionName);
+builder.Services.AddSingleton<IExternalIdentityVerifier, FirebaseIdTokenVerifier>();
 
 // AllowCredentials: trình duyệt phải gửi được cookie refresh token (BR10) từ origin của frontend.
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy

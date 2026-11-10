@@ -23,6 +23,7 @@ public static class IdentityModule
         services.AddScoped<ITenantService, TenantService>();
         services.AddScoped<IAdminSeeder, AdminSeeder>();
         services.AddScoped<IIdentityVerificationService, IdentityVerificationService>();
+        services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IIdentityVerifiedChecker, IdentityVerifiedChecker>();
 
         return services;

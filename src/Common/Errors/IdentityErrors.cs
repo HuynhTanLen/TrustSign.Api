@@ -28,7 +28,7 @@ public static class IdentityErrors
         Error.Validation("Auth.InvalidFullName", "Họ và tên là bắt buộc và tối đa 100 ký tự.");
 
     public static readonly Error WeakPassword =
-        Error.Validation("Auth.WeakPassword", "Mật khẩu phải có ít nhất 8 ký tự.");
+        Error.Validation("Auth.WeakPassword", "Mật khẩu dài 8–64 ký tự, gồm cả chữ và số, không quá phổ biến và không chứa email hay họ tên.");
 
     public static readonly Error TermsMustBeAccepted =
         Error.Validation("Auth.TermsMustBeAccepted", "Bạn cần đồng ý với Điều khoản sử dụng và Chính sách bảo vệ dữ liệu cá nhân (NĐ 13/2023) để đăng ký tài khoản.");

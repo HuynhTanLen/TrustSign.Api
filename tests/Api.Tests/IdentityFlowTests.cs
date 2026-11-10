@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using TrustSign.Api.Security;
 using TrustSign.Application.Modules.Audit;
 using TrustSign.Application.Modules.Identity;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Application.Modules.Notifications;
 using TrustSign.Application.Modules.Subscriptions;
 using TrustSign.Common;
@@ -23,6 +24,10 @@ public sealed class IdentityFlowTests
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 10, 26, 8, 0, 0, TimeSpan.Zero));
     private readonly InMemoryIdentityStore _store = new();
     private readonly RecordingEmailSender _emails = new();
+    private readonly FakeGoogleVerifier _google = new();
+    private readonly HmacMediaSigner _signer = new(Options.Create(new MediaOptions { PublicApiBaseUrl = "http://api" }));
+    private readonly InMemoryMedia _media = new();
+    private readonly IUserService _userService;
     private readonly SigningKeyRing _keyRing = SigningKeyRing.CreateEphemeral();
     private readonly IPasswordHasher _hasher = new Pbkdf2PasswordHasher();
     private readonly RsaAccessTokenIssuer _issuer;
@@ -52,12 +57,16 @@ public sealed class IdentityFlowTests
             _store,
             _store,
             _store,
+            _store,
+            _google,
             _hasher,
             _issuer,
             _emails,
             jwtOptions,
             smtpOptions,
+            _signer,
             _clock);
+        _userService = new UserService(_store, _store, _store, _media, _signer, _clock);
         _tenants = new TenantService(
             _store,
             _store,
@@ -67,6 +76,7 @@ public sealed class IdentityFlowTests
             new NoOpSubscriptionProvisioner(),
             new InMemoryAuditLogger(),
             smtpOptions,
+            _signer,
             _clock);
     }
 
@@ -575,7 +585,152 @@ public sealed class IdentityFlowTests
         }
     }
 
+    [Fact]
+    public async Task Google_login_creates_active_account_without_password_and_needs_terms()
+    {
+        _google.Tokens["t1"] = new ExternalIdentity("uid-1", "Gg.User@Gmail.com", true, "Gg User");
+
+        Result<AuthSessionResultDto> noTerms = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t1"), CancellationToken.None);
+        Assert.Equal(IdentityErrors.TermsMustBeAccepted, noTerms.Error);
+
+        Result<AuthSessionResultDto> created = await _auth.GoogleLoginAsync(
+            new GoogleLoginRequestDto("t1", AcceptTerms: true), CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        Assert.Equal("gg.user@gmail.com", created.Value.User.Email);
+        Assert.False(created.Value.User.HasPassword);
+
+        // Lần sau không cần đồng ý điều khoản, và không tạo thêm tài khoản.
+        Result<AuthSessionResultDto> again = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t1"), CancellationToken.None);
+        Assert.True(again.IsSuccess);
+        Assert.Equal(created.Value.User.Id, again.Value.User.Id);
+
+        // Tài khoản chỉ có Google không đăng nhập được bằng mật khẩu.
+        Result<AuthSessionResultDto> pwd = await _auth.LoginAsync(new LoginRequestDto("gg.user@gmail.com", "x"), CancellationToken.None);
+        Assert.Equal(IdentityErrors.PasswordNotSet, pwd.Error);
+
+        // Không hủy liên kết được khi Google là cách đăng nhập duy nhất.
+        Result<ActionMessageDto> unlink = await _auth.UnlinkGoogleAsync(created.Value.User.Id, CancellationToken.None);
+        Assert.Equal(IdentityErrors.CannotUnlinkLastMethod, unlink.Error);
+    }
+
+    [Fact]
+    public async Task Google_login_with_existing_email_links_only_after_correct_password()
+    {
+        AuthSessionResultDto existing = await RegisterVerifyAndLoginAsync("owner@trustsign.vn", "Chủ Tài Khoản");
+        _google.Tokens["t2"] = new ExternalIdentity("uid-2", "owner@trustsign.vn", true, "Owner");
+
+        Result<AuthSessionResultDto> noPassword = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t2"), CancellationToken.None);
+        Assert.Equal(IdentityErrors.GoogleLinkRequiresPassword, noPassword.Error);
+
+        Result<AuthSessionResultDto> wrong = await _auth.GoogleLoginAsync(
+            new GoogleLoginRequestDto("t2", Password: "sai-mat-khau-1"), CancellationToken.None);
+        Assert.Equal(IdentityErrors.InvalidCredentials, wrong.Error);
+
+        Result<AuthSessionResultDto> linked = await _auth.GoogleLoginAsync(
+            new GoogleLoginRequestDto("t2", Password: "TrustSign@2026"), CancellationToken.None);
+        Assert.True(linked.IsSuccess);
+        Assert.Equal(existing.User.Id, linked.Value.User.Id);
+
+        // Đã liên kết thì lần sau chỉ cần token.
+        Assert.True((await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t2"), CancellationToken.None)).IsSuccess);
+
+        // Có mật khẩu nên hủy liên kết được, và sau đó cần mật khẩu để liên kết lại.
+        Assert.True((await _auth.UnlinkGoogleAsync(existing.User.Id, CancellationToken.None)).IsSuccess);
+        Result<AuthSessionResultDto> afterUnlink = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t2"), CancellationToken.None);
+        Assert.Equal(IdentityErrors.GoogleLinkRequiresPassword, afterUnlink.Error);
+    }
+
+    [Fact]
+    public async Task Google_login_rejects_bad_token_and_unverified_google_email()
+    {
+        Result<AuthSessionResultDto> bad = await _auth.GoogleLoginAsync(
+            new GoogleLoginRequestDto("khong-ton-tai", AcceptTerms: true), CancellationToken.None);
+        Assert.Equal(IdentityErrors.ExternalTokenInvalid, bad.Error);
+
+        _google.Tokens["t3"] = new ExternalIdentity("uid-3", "x@gmail.com", false, null);
+        Result<AuthSessionResultDto> unverified = await _auth.GoogleLoginAsync(
+            new GoogleLoginRequestDto("t3", AcceptTerms: true), CancellationToken.None);
+        Assert.Equal(IdentityErrors.GoogleEmailNotVerified, unverified.Error);
+    }
+
+    [Fact]
+    public async Task Link_google_to_logged_in_account_rejects_identity_owned_by_someone_else()
+    {
+        AuthSessionResultDto a = await RegisterVerifyAndLoginAsync("a@trustsign.vn", "Người A");
+        AuthSessionResultDto b = await RegisterVerifyAndLoginAsync("b@trustsign.vn", "Người B");
+        _google.Tokens["tg"] = new ExternalIdentity("uid-shared", "shared@gmail.com", true, null);
+
+        Assert.True((await _auth.LinkGoogleAsync(a.User.Id, "tg", CancellationToken.None)).IsSuccess);
+        Result<ActionMessageDto> conflict = await _auth.LinkGoogleAsync(b.User.Id, "tg", CancellationToken.None);
+        Assert.Equal(IdentityErrors.GoogleAlreadyLinked, conflict.Error);
+    }
+
+    private static readonly byte[] TinyPng = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
+
+    [Fact]
+    public async Task Avatar_is_validated_replaced_served_by_signed_url_and_removed()
+    {
+        AuthSessionResultDto me = await RegisterVerifyAndLoginAsync("avatar@trustsign.vn", "Người Dùng Ảnh");
+        Guid id = me.User.Id;
+        Assert.Null(me.User.AvatarUrl);
+
+        // Không phải ảnh (HTML) hoặc quá lớn thì bị từ chối.
+        Assert.Equal(IdentityErrors.AvatarInvalid, (await _userService.SetAvatarAsync(id, null, "<html>"u8.ToArray(), CancellationToken.None)).Error);
+        Assert.Equal(IdentityErrors.AvatarInvalid, (await _userService.SetAvatarAsync(id, null, new byte[IUserService.MaxAvatarBytes + 1], CancellationToken.None)).Error);
+
+        Result<UserProfileDto> set = await _userService.SetAvatarAsync(id, null, TinyPng, CancellationToken.None);
+        Assert.True(set.IsSuccess);
+        string url = set.Value.AvatarUrl!;
+        Assert.StartsWith($"http://api/api/media/avatars/{id:D}?token=", url);
+        Assert.Single(_media.Files);
+
+        string token = Uri.UnescapeDataString(url[(url.IndexOf("token=", StringComparison.Ordinal) + 6)..]);
+        Assert.Equal(TinyPng, (await _userService.GetAvatarByTokenAsync(id, token, CancellationToken.None)).Value);
+
+        // Token của người khác hoặc token sai không đọc được ảnh.
+        Assert.True((await _userService.GetAvatarByTokenAsync(Guid.NewGuid(), token, CancellationToken.None)).IsFailure);
+        Assert.True((await _userService.GetAvatarByTokenAsync(id, "rác", CancellationToken.None)).IsFailure);
+
+        // Đổi ảnh: file cũ bị xoá, chỉ còn một file.
+        await _userService.SetAvatarAsync(id, null, TinyPng, CancellationToken.None);
+        Assert.Single(_media.Files);
+
+        Result<UserProfileDto> removed = await _userService.RemoveAvatarAsync(id, null, CancellationToken.None);
+        Assert.Null(removed.Value.AvatarUrl);
+        Assert.Empty(_media.Files);
+        Assert.True((await _userService.GetAvatarByTokenAsync(id, token, CancellationToken.None)).IsFailure);
+    }
+
+    private sealed class InMemoryMedia : IMediaStorage
+    {
+        public Dictionary<string, byte[]> Files { get; } = [];
+
+        public Task SaveAsync(string storageKey, ReadOnlyMemory<byte> bytes, CancellationToken cancel = default)
+        {
+            Files[storageKey] = bytes.ToArray();
+            return Task.CompletedTask;
+        }
+
+        public Task<byte[]?> ReadAsync(string storageKey, CancellationToken cancel = default) =>
+            Task.FromResult(Files.GetValueOrDefault(storageKey));
+
+        public Task DeleteAsync(string storageKey, CancellationToken cancel = default)
+        {
+            Files.Remove(storageKey);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeGoogleVerifier : IExternalIdentityVerifier
+    {
+        public Dictionary<string, ExternalIdentity> Tokens { get; } = [];
+
+        public Task<ExternalIdentity?> VerifyGoogleAsync(string idToken, CancellationToken cancel) =>
+            Task.FromResult(Tokens.GetValueOrDefault(idToken));
+    }
+
     private sealed class InMemoryIdentityStore :
+        IExternalLoginRepository,
         IUserRepository,
         IEmailVerificationTokenRepository,
         IPasswordResetTokenRepository,
@@ -589,6 +744,25 @@ public sealed class IdentityFlowTests
         private readonly List<Tenant> _tenants = [];
         private readonly List<Membership> _memberships = [];
         private readonly List<TenantInvitation> _invitations = [];
+        private readonly List<ExternalLogin> _externalLogins = [];
+
+        Task<ExternalLogin?> IExternalLoginRepository.FindAsync(string provider, string providerUserId, CancellationToken cancel) =>
+            Task.FromResult(_externalLogins.FirstOrDefault(l => l.Provider == provider && l.ProviderUserId == providerUserId));
+
+        Task<ExternalLogin?> IExternalLoginRepository.FindByUserAsync(Guid userId, string provider, CancellationToken cancel) =>
+            Task.FromResult(_externalLogins.FirstOrDefault(l => l.UserId == userId && l.Provider == provider));
+
+        Task IExternalLoginRepository.AddAsync(ExternalLogin login, CancellationToken cancel)
+        {
+            _externalLogins.Add(login);
+            return Task.CompletedTask;
+        }
+
+        Task IExternalLoginRepository.RemoveAsync(ExternalLogin login, CancellationToken cancel)
+        {
+            _externalLogins.Remove(login);
+            return Task.CompletedTask;
+        }
 
         public Task<User?> FindByIdAsync(Guid id, CancellationToken cancel) =>
             Task.FromResult(_users.FirstOrDefault(u => u.Id == id));

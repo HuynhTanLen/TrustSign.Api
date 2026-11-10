@@ -29,6 +29,11 @@ public sealed class Tenant
 
     public TenantStatus Status { get; private set; }
 
+    /// <summary>Lý do quản trị viên khóa doanh nghiệp (F14); null khi đang hoạt động.</summary>
+    public string? LockReason { get; private set; }
+
+    public DateTimeOffset? LockedAt { get; private set; }
+
     public Guid CreatedByUserId { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -56,6 +61,39 @@ public sealed class Tenant
         CreatedByUserId = createdByUserId,
         CreatedAt = now
     };
+
+    /// <summary>Quản trị viên khóa doanh nghiệp: lần cấp token sau, thành viên không còn quyền vào doanh nghiệp này.</summary>
+    public Result Lock(string? reason, DateTimeOffset now)
+    {
+        string trimmed = reason?.Trim() ?? string.Empty;
+        if (trimmed.Length is 0 or > AdminErrors.MaxLockReasonLength)
+        {
+            return AdminErrors.LockReasonRequired;
+        }
+
+        if (Status == TenantStatus.Locked)
+        {
+            return AdminErrors.AlreadyLocked;
+        }
+
+        Status = TenantStatus.Locked;
+        LockReason = trimmed;
+        LockedAt = now;
+        return Result.Success();
+    }
+
+    public Result Unlock()
+    {
+        if (Status != TenantStatus.Locked)
+        {
+            return AdminErrors.NotLocked;
+        }
+
+        Status = TenantStatus.Active;
+        LockReason = null;
+        LockedAt = null;
+        return Result.Success();
+    }
 
     public Result Update(
         string name,
