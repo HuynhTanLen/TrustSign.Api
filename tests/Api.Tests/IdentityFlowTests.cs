@@ -586,20 +586,17 @@ public sealed class IdentityFlowTests
     }
 
     [Fact]
-    public async Task Google_login_creates_active_account_without_password_and_needs_terms()
+    public async Task Google_login_registers_unknown_email_on_the_spot_without_password()
     {
         _google.Tokens["t1"] = new ExternalIdentity("uid-1", "Gg.User@Gmail.com", true, "Gg User");
 
-        Result<AuthSessionResultDto> noTerms = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t1"), CancellationToken.None);
-        Assert.Equal(IdentityErrors.TermsMustBeAccepted, noTerms.Error);
-
-        Result<AuthSessionResultDto> created = await _auth.GoogleLoginAsync(
-            new GoogleLoginRequestDto("t1", AcceptTerms: true), CancellationToken.None);
+        // Lần đầu: chưa có tài khoản nên tạo luôn và đăng nhập, không cần gọi lại với cờ đồng ý điều khoản.
+        Result<AuthSessionResultDto> created = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t1"), CancellationToken.None);
         Assert.True(created.IsSuccess);
         Assert.Equal("gg.user@gmail.com", created.Value.User.Email);
         Assert.False(created.Value.User.HasPassword);
 
-        // Lần sau không cần đồng ý điều khoản, và không tạo thêm tài khoản.
+        // Lần sau không tạo thêm tài khoản.
         Result<AuthSessionResultDto> again = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t1"), CancellationToken.None);
         Assert.True(again.IsSuccess);
         Assert.Equal(created.Value.User.Id, again.Value.User.Id);

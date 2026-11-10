@@ -190,11 +190,8 @@ internal sealed class AuthService(
             user = await users.FindByEmailAsync(identity.Value.Email, cancel);
             if (user is null)
             {
-                if (!request.AcceptTerms)
-                {
-                    return IdentityErrors.TermsMustBeAccepted;
-                }
-
+                // Chưa có tài khoản thì đăng ký luôn, không bắt đăng ký lại. Sự đồng ý điều khoản được giao diện thông báo ngay
+                // cạnh nút Google ("tiếp tục nghĩa là đồng ý") và thời điểm đồng ý được lưu trong User.RegisterExternal.
                 string name = string.IsNullOrWhiteSpace(identity.Value.Name)
                     ? identity.Value.Email.Split('@')[0]
                     : identity.Value.Name.Trim();
