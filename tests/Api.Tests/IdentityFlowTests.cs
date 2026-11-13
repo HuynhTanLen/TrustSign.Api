@@ -632,9 +632,9 @@ public sealed class IdentityFlowTests
         Assert.True(again.IsSuccess);
         Assert.Equal(created.Value.User.Id, again.Value.User.Id);
 
-        // Tài khoản chỉ có Google không đăng nhập được bằng mật khẩu.
+        // Tài khoản chỉ có Google không đăng nhập được bằng mật khẩu (trả thông báo chung để không lộ phương thức đăng nhập).
         Result<AuthSessionResultDto> pwd = await _auth.LoginAsync(new LoginRequestDto("gg.user@gmail.com", "x"), CancellationToken.None);
-        Assert.Equal(IdentityErrors.PasswordNotSet, pwd.Error);
+        Assert.Equal(IdentityErrors.InvalidCredentials, pwd.Error);
 
         // Không hủy liên kết được khi Google là cách đăng nhập duy nhất.
         Result<ActionMessageDto> unlink = await _auth.UnlinkGoogleAsync(created.Value.User.Id, CancellationToken.None);

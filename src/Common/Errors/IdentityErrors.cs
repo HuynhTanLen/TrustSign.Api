@@ -150,9 +150,6 @@ public static class IdentityErrors
     public static readonly Error CannotUnlinkLastMethod =
         Error.Validation("Auth.CannotUnlinkLastMethod", "Hãy đặt mật khẩu (Quên mật khẩu) trước khi hủy liên kết Google, nếu không bạn sẽ không đăng nhập được.");
 
-    public static readonly Error PasswordNotSet =
-        Error.Unauthorized("Auth.PasswordNotSet", "Tài khoản này đăng nhập bằng Google. Hãy dùng Google, hoặc Quên mật khẩu để đặt mật khẩu.");
-
     public static readonly Error EkycNotVerified =
         Error.Validation("Ekyc.NotVerified", "Hồ sơ này không còn ở trạng thái đã xác minh.");
 }

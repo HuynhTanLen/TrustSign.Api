@@ -152,12 +152,7 @@ internal sealed class AuthService(
             return canLogin.Error;
         }
 
-        if (user.PasswordHash is null)
-        {
-            return IdentityErrors.PasswordNotSet;
-        }
-
-        if (!passwordHasher.Verify(request.Password, user.PasswordHash))
+        if (user.PasswordHash is null || !passwordHasher.Verify(request.Password, user.PasswordHash))
         {
             return await FailPasswordAsync(user, now, cancel);
         }
