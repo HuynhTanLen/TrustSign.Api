@@ -12,7 +12,8 @@ public sealed record AdminTenantRow(
     int MembersCount,
     TenantStatus Status,
     string? LockReason,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    TenantVerificationStatus VerificationStatus = TenantVerificationStatus.Unverified);
 
 public sealed record AdminUserRow(
     Guid Id,
@@ -22,7 +23,8 @@ public sealed record AdminUserRow(
     UserStatus Status,
     int TenantsCount,
     string? LockReason,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IdentityVerified = false);
 
 /// <summary>Truy vấn chỉ đọc cho khu quản trị nền tảng (F14), gom dữ liệu nhiều module trong một câu SQL.</summary>
 public interface IAdminDirectoryRepository

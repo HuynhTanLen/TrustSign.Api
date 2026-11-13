@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using TrustSign.Api.Http;
 using TrustSign.Api.Security;
 using TrustSign.Application.Modules.Identity;
+using TrustSign.Application.Modules.Media;
 using TrustSign.Common;
 using TrustSign.Common.Errors;
 
@@ -12,8 +13,31 @@ namespace TrustSign.Api.Controllers.Identity;
 [ApiController]
 [Route("api/admin")]
 [Authorize(Roles = "Admin")]
-public sealed class AdminController(IAdminService admin) : ControllerBase
+public sealed class AdminController(IAdminService admin, ITenantVerificationService verification) : ControllerBase
 {
+    [HttpPost("tenants/{id:guid}/verification/approve")]
+    public Task<IActionResult> ApproveVerification(Guid id, CancellationToken cancel) =>
+        AsAdminAsync(adminId => verification.ApproveAsync(adminId, id, cancel));
+
+    [HttpPost("tenants/{id:guid}/verification/reject")]
+    public Task<IActionResult> RejectVerification(Guid id, [FromBody] AdminRejectVerificationRequestDto request, CancellationToken cancel) =>
+        AsAdminAsync(adminId => verification.RejectAsync(adminId, id, request.Reason, cancel));
+
+    /// <summary>Giấy đăng ký kinh doanh; cần Bearer của quản trị viên nên giao diện tải bằng fetch rồi mở dạng blob.</summary>
+    [HttpGet("tenants/{id:guid}/business-license")]
+    public async Task<IActionResult> BusinessLicense(Guid id, CancellationToken cancel)
+    {
+        Result<byte[]> result = await verification.GetLicenseAsync(id, cancel);
+        if (result.IsFailure)
+        {
+            return this.ToProblem(result.Error);
+        }
+
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        return File(result.Value, MediaContent.ContentTypeOf(result.Value));
+    }
+
     [HttpGet("tenants")]
     public async Task<IActionResult> ListTenants(CancellationToken cancel) =>
         Ok(await admin.ListTenantsAsync(cancel));

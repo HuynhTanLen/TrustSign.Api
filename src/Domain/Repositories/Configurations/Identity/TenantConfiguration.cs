@@ -21,6 +21,14 @@ internal sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(tenant => tenant.Phone).HasMaxLength(32);
         builder.Property(tenant => tenant.LockReason).HasMaxLength(500);
         builder.Property(tenant => tenant.Status).HasConversion<string>().HasMaxLength(16);
+        builder.Property(tenant => tenant.VerificationStatus).HasConversion<string>().HasMaxLength(16);
+        builder.Property(tenant => tenant.VerificationRejectReason).HasMaxLength(500);
+        builder.Property(tenant => tenant.BusinessLicenseKey).HasMaxLength(300);
+
+        // Mỗi mã số thuế chỉ có một doanh nghiệp đang chờ duyệt hoặc đã xác thực; doanh nghiệp chưa nộp hồ sơ không bị ràng buộc.
+        builder.HasIndex(tenant => tenant.TaxCode)
+            .IsUnique()
+            .HasFilter("tax_code IS NOT NULL AND verification_status IN ('Pending', 'Verified')");
 
         builder.HasOne<User>()
             .WithMany()

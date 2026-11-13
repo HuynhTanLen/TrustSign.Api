@@ -33,6 +33,7 @@ public sealed class IdentityFlowTests
     private readonly RsaAccessTokenIssuer _issuer;
     private readonly IAuthService _auth;
     private readonly ITenantService _tenants;
+    private readonly FakeIdentityChecker _identity = new();
 
     public IdentityFlowTests()
     {
@@ -75,9 +76,39 @@ public sealed class IdentityFlowTests
             _emails,
             new NoOpSubscriptionProvisioner(),
             new InMemoryAuditLogger(),
+            _identity,
             smtpOptions,
             _signer,
             _clock);
+    }
+
+    /// <summary>eKYC giả: có <see cref="Name"/> nghĩa là mọi tài khoản đã xác minh với họ tên đó, null là chưa xác minh.</summary>
+    private sealed class FakeIdentityChecker : IIdentityVerifiedChecker
+    {
+        public string? Name { get; set; } = "Nguyễn Văn Chủ";
+
+        public Task<bool> IsVerifiedAsync(Guid userId, CancellationToken cancel) => Task.FromResult(Name is not null);
+
+        public Task<string?> GetVerifiedFullNameAsync(Guid userId, CancellationToken cancel) => Task.FromResult(Name);
+    }
+
+    [Fact]
+    public async Task Creating_a_tenant_needs_ekyc_and_takes_the_representative_from_it()
+    {
+        AuthSessionResultDto owner = await RegisterVerifyAndLoginAsync("dai_dien@company.vn", "Chủ DN");
+        Guid sessionId = ParseSessionId(owner.AccessToken);
+        var request = new CreateTenantRequestDto(
+            "Công ty Đại Diện", "0101234567", "Hà Nội", null, RepresentativeName: "Tên Gõ Tay", RepresentativeTitle: "Giám đốc");
+
+        _identity.Name = null;
+        Result<TenantSessionResponseDto> blocked = await _tenants.CreateTenantAsync(owner.User.Id, sessionId, request, CancellationToken.None);
+        Assert.Equal(IdentityErrors.IdentityNotVerifiedForTenant, blocked.Error);
+
+        _identity.Name = "Trần Thị Thật";
+        Result<TenantSessionResponseDto> created = await _tenants.CreateTenantAsync(owner.User.Id, sessionId, request, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        Assert.Equal("Trần Thị Thật", created.Value.Tenant.RepresentativeName);
+        Assert.Equal("Giám đốc", created.Value.Tenant.RepresentativeTitle);
     }
 
     [Fact]
@@ -318,7 +349,7 @@ public sealed class IdentityFlowTests
         Result<TenantDto> ownerUpdate = await _tenants.UpdateCurrentTenantAsync(
             tenantId,
             owner.User.Id,
-            new UpdateTenantRequestDto("Tên Đã Đổi", "0101234567-001", "TP.HCM", "owner_new@comp.vn", "0909888999", "Nguyễn Văn Chủ", "Tổng Giám đốc"),
+            new UpdateTenantRequestDto("Tên Đã Đổi", "0101234567-001", "TP.HCM", "owner_new@comp.vn", "0909888999", "Tên Gõ Tay Bị Bỏ Qua", "Tổng Giám đốc"),
             CancellationToken.None);
 
         Assert.True(ownerUpdate.IsSuccess);
@@ -586,27 +617,24 @@ public sealed class IdentityFlowTests
     }
 
     [Fact]
-    public async Task Google_login_creates_active_account_without_password_and_needs_terms()
+    public async Task Google_login_registers_unknown_email_on_the_spot_without_password()
     {
         _google.Tokens["t1"] = new ExternalIdentity("uid-1", "Gg.User@Gmail.com", true, "Gg User");
 
-        Result<AuthSessionResultDto> noTerms = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t1"), CancellationToken.None);
-        Assert.Equal(IdentityErrors.TermsMustBeAccepted, noTerms.Error);
-
-        Result<AuthSessionResultDto> created = await _auth.GoogleLoginAsync(
-            new GoogleLoginRequestDto("t1", AcceptTerms: true), CancellationToken.None);
+        // Lần đầu: chưa có tài khoản nên tạo luôn và đăng nhập, không cần gọi lại với cờ đồng ý điều khoản.
+        Result<AuthSessionResultDto> created = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t1"), CancellationToken.None);
         Assert.True(created.IsSuccess);
         Assert.Equal("gg.user@gmail.com", created.Value.User.Email);
         Assert.False(created.Value.User.HasPassword);
 
-        // Lần sau không cần đồng ý điều khoản, và không tạo thêm tài khoản.
+        // Lần sau không tạo thêm tài khoản.
         Result<AuthSessionResultDto> again = await _auth.GoogleLoginAsync(new GoogleLoginRequestDto("t1"), CancellationToken.None);
         Assert.True(again.IsSuccess);
         Assert.Equal(created.Value.User.Id, again.Value.User.Id);
 
-        // Tài khoản chỉ có Google không đăng nhập được bằng mật khẩu.
+        // Tài khoản chỉ có Google không đăng nhập được bằng mật khẩu (trả thông báo chung để không lộ phương thức đăng nhập).
         Result<AuthSessionResultDto> pwd = await _auth.LoginAsync(new LoginRequestDto("gg.user@gmail.com", "x"), CancellationToken.None);
-        Assert.Equal(IdentityErrors.PasswordNotSet, pwd.Error);
+        Assert.Equal(IdentityErrors.InvalidCredentials, pwd.Error);
 
         // Không hủy liên kết được khi Google là cách đăng nhập duy nhất.
         Result<ActionMessageDto> unlink = await _auth.UnlinkGoogleAsync(created.Value.User.Id, CancellationToken.None);
@@ -856,6 +884,10 @@ public sealed class IdentityFlowTests
 
         Task<Tenant?> ITenantRepository.FindByIdAsync(Guid tenantId, CancellationToken cancel) =>
             Task.FromResult(_tenants.FirstOrDefault(t => t.Id == tenantId));
+
+        public Task<bool> TaxCodeInUseAsync(string taxCode, Guid exceptTenantId, CancellationToken cancel) =>
+            Task.FromResult(_tenants.Any(t => t.Id != exceptTenantId && t.TaxCode == taxCode &&
+                t.VerificationStatus is TrustSign.Common.Enums.TenantVerificationStatus.Pending or TrustSign.Common.Enums.TenantVerificationStatus.Verified));
 
         public Task<IReadOnlyList<UserTenantMembership>> GetUserTenantsAsync(Guid userId, CancellationToken cancel)
         {

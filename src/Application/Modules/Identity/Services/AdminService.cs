@@ -29,6 +29,9 @@ internal sealed class AdminService(
         ["Admin.UserLocked"] = "Khóa tài khoản",
         ["Admin.UserUnlocked"] = "Mở khóa tài khoản",
         ["Tenant.Updated"] = "Cập nhật thông tin doanh nghiệp",
+        ["Tenant.VerificationSubmitted"] = "Nộp hồ sơ xác thực",
+        ["Admin.TenantVerified"] = "Duyệt xác thực doanh nghiệp",
+        ["Admin.TenantVerificationRejected"] = "Từ chối hồ sơ xác thực",
     };
 
     private sealed record LockPayload(string? Reason);
@@ -45,7 +48,8 @@ internal sealed class AdminService(
                 t.MembersCount,
                 t.Status == TenantStatus.Locked,
                 t.LockReason,
-                t.CreatedAt))
+                t.CreatedAt,
+                t.VerificationStatus.ToString()))
             .ToList();
 
     public async Task<IReadOnlyList<AdminUserListItemDto>> ListUsersAsync(CancellationToken cancel) =>
@@ -59,7 +63,8 @@ internal sealed class AdminService(
                 u.Role == UserRole.Admin,
                 u.Status == UserStatus.Locked,
                 u.LockReason,
-                u.CreatedAt))
+                u.CreatedAt,
+                u.IdentityVerified))
             .ToList();
 
     public async Task<Result<AdminTenantProfileDto>> GetTenantAsync(Guid tenantId, CancellationToken cancel)
@@ -117,7 +122,13 @@ internal sealed class AdminService(
             subscriptionDto,
             members,
             Enum.GetValues<ContractStatus>().ToDictionary(s => s.ToString(), s => counts.GetValueOrDefault(s)),
-            await HistoryAsync(tenantId, "Tenant", tenantId, cancel));
+            await HistoryAsync(tenantId, "Tenant", tenantId, cancel),
+            new AdminVerificationDto(
+                tenant.VerificationStatus.ToString(),
+                tenant.VerificationSubmittedAt,
+                tenant.VerifiedAt,
+                tenant.VerificationRejectReason,
+                tenant.BusinessLicenseKey is not null));
     }
 
     public async Task<Result<AdminUserProfileDto>> GetUserAsync(Guid userId, CancellationToken cancel)

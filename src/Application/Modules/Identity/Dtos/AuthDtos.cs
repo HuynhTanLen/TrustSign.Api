@@ -29,7 +29,7 @@ public sealed record ResetPasswordRequestDto(string Token, string NewPassword);
 public sealed record ChangePasswordRequestDto(string CurrentPassword, string NewPassword);
 
 /// <param name="IdToken">Firebase ID token sau khi người dùng chọn tài khoản Google.</param>
-/// <param name="AcceptTerms">Bắt buộc khi Google tạo tài khoản mới (NĐ 13/2023).</param>
+/// <param name="AcceptTerms">Không còn dùng: Google chưa có tài khoản thì tạo luôn. Giữ lại để client cũ vẫn gửi được.</param>
 /// <param name="Password">Chỉ cần khi email Google trùng một tài khoản đã có: chứng minh chủ tài khoản trước khi liên kết.</param>
 public sealed record GoogleLoginRequestDto(string IdToken, bool AcceptTerms = false, string? Password = null);
 

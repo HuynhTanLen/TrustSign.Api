@@ -25,6 +25,7 @@ internal sealed class ContractService(
     IContractTemplateRepository templates,
     IUserRepository users,
     IIdentityVerifiedChecker identityChecker,
+    ITenantVerifiedChecker tenantChecker,
     IMediaStorage fileStorage,
     IMediaSigner mediaSigner,
     IContractPdfGenerator pdfGenerator,
@@ -270,6 +271,12 @@ internal sealed class ContractService(
         if (accessResult.IsFailure)
         {
             return accessResult.Error;
+        }
+
+        // Người ký chỉ nên nhận lời mời từ doanh nghiệp đã được xác thực pháp nhân; bản nháp thì doanh nghiệp nào cũng soạn được.
+        if (!await tenantChecker.IsVerifiedAsync(tenantId, cancel))
+        {
+            return TenantVerificationErrors.TenantNotVerified;
         }
 
         Contract contract = accessResult.Value;
